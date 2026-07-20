@@ -25,9 +25,11 @@ dist/
 *.sqlite3
 uploads/
 
+# Split repository
+backend/
+
 # Local agent and editor state
 .omx/
 .vscode/
 .idea/
 .DS_Store
-
