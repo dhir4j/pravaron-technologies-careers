@@ -25,8 +25,9 @@ The frontend uses HTTP-only cookie authentication through the Flask API. Configu
 Production backend:
 
 ```text
-NEXT_PUBLIC_API_BASE_URL=https://server2careers.pravarontechnologies.com/api/v1
+NEXT_PUBLIC_API_BASE_URL=
 ```
 
-The PythonAnywhere backend must have SSL enabled for
-`server2careers.pravarontechnologies.com` before the HTTPS frontend can call it.
+Leave `NEXT_PUBLIC_API_BASE_URL` unset in production so browser requests use the
+same-origin `/api/v1` path. Next.js rewrites those requests to the PythonAnywhere
+backend from the server side.
