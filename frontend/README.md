@@ -21,3 +21,12 @@ Seeded development admin:
 
 The frontend uses HTTP-only cookie authentication through the Flask API. Configure
 `NEXT_PUBLIC_API_BASE_URL` for staging and production.
+
+Production backend:
+
+```text
+NEXT_PUBLIC_API_BASE_URL=https://server2careers.pravarontechnologies.com/api/v1
+```
+
+The PythonAnywhere backend must have SSL enabled for
+`server2careers.pravarontechnologies.com` before the HTTPS frontend can call it.
