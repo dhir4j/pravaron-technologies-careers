@@ -1,29 +1,59 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Download, FileText } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Download, FileText, XCircle } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { CAREERS_CONTACT_EMAIL } from "@/lib/contact";
 import { formatDate } from "@/lib/format";
-import type { Application } from "@/lib/types";
+import type { Application, OfferLetter } from "@/lib/types";
 import { Feedback, LoadingBlock, StatusBadge } from "@/components/ui";
 
 export function CandidateApplicationDetail({ id }: { id: string }) {
   const [application, setApplication] = useState<Application | null>(null);
+  const [offerLetter, setOfferLetter] = useState<OfferLetter | null>(null);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
+  const [respondingOffer, setRespondingOffer] = useState<"accepted" | "declined" | null>(null);
   const [showWithdraw, setShowWithdraw] = useState(false);
 
   useEffect(() => {
-    api<{ application: Application }>(`/candidate/applications/${id}`)
-      .then((response) => setApplication(response.application))
+    Promise.all([
+      api<{ application: Application }>(`/candidate/applications/${id}`),
+      api<{ offer_letter: OfferLetter | null }>(`/candidate/applications/${id}/offer`).catch(() => ({ offer_letter: null })),
+    ])
+      .then(([applicationResponse, offerResponse]) => {
+        setApplication(applicationResponse.application);
+        setOfferLetter(offerResponse.offer_letter);
+      })
       .catch((requestError: Error) => setError(requestError.message));
   }, [id]);
+
+  async function respondToOffer(decision: "accepted" | "declined") {
+    setRespondingOffer(decision);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await api<{ application: Application; offer_letter: OfferLetter }>(
+        `/candidate/applications/${id}/offer/respond`,
+        { method: "POST", body: { decision } },
+      );
+      setApplication(response.application);
+      setOfferLetter(response.offer_letter);
+      setSuccess(decision === "accepted" ? "Offer accepted. Your application is marked as hired." : "Offer declined. The hiring team has been notified.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Offer response failed");
+    } finally {
+      setRespondingOffer(null);
+    }
+  }
 
   async function withdraw(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setWithdrawing(true);
     setError("");
+    setSuccess("");
     const form = new FormData(event.currentTarget);
     try {
       const response = await api<{ application: Application }>(
@@ -32,6 +62,7 @@ export function CandidateApplicationDetail({ id }: { id: string }) {
       );
       setApplication(response.application);
       setShowWithdraw(false);
+      setSuccess("Application withdrawn.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Withdrawal failed");
     } finally {
@@ -41,7 +72,8 @@ export function CandidateApplicationDetail({ id }: { id: string }) {
 
   if (error && !application) return <Feedback tone="error">{error}</Feedback>;
   if (!application) return <LoadingBlock label="Loading application" />;
-  const canWithdraw = !["Application Withdrawn", "Hired", "Not Selected"].includes(application.candidate_status);
+  const canWithdraw = !["Application Withdrawn", "Hired", "Not Selected", "Offer Released"].includes(application.candidate_status);
+  const canRespondToOffer = offerLetter?.status === "sent" && application.candidate_status === "Offer Released";
 
   return (
     <>
@@ -59,8 +91,40 @@ export function CandidateApplicationDetail({ id }: { id: string }) {
         ) : null}
       </header>
       {error ? <Feedback tone="error">{error}</Feedback> : null}
+      {success ? <Feedback tone="success">{success}</Feedback> : null}
 
       <div className="detail-grid">
+        {offerLetter ? (
+          <section className="panel panel-wide offer-response-panel">
+            <div className="analysis-heading">
+              <div>
+                <h2>Offer letter</h2>
+                <p>{offerLetter.role_title}{offerLetter.department ? ` | ${offerLetter.department}` : ""}</p>
+              </div>
+              <StatusBadge value={offerLetter.status} />
+            </div>
+            <dl className="detail-definition-grid">
+              <div><dt>Joining date</dt><dd>{offerLetter.joining_date ? formatDate(offerLetter.joining_date) : "To be confirmed"}</dd></div>
+              <div><dt>Sent</dt><dd>{offerLetter.sent_at ? formatDate(offerLetter.sent_at, true) : "Not sent"}</dd></div>
+              <div><dt>Responded</dt><dd>{offerLetter.responded_at ? formatDate(offerLetter.responded_at, true) : "Pending"}</dd></div>
+            </dl>
+            {offerLetter.compensation_details ? <div className="answer-list"><div><strong>Compensation</strong><p>{offerLetter.compensation_details}</p></div></div> : null}
+            {offerLetter.additional_terms ? <div className="answer-list"><div><strong>Additional terms</strong><p>{offerLetter.additional_terms}</p></div></div> : null}
+            {canRespondToOffer ? (
+              <div className="modal-actions offer-actions-inline">
+                <button className="button button-primary" onClick={() => respondToOffer("accepted")} disabled={Boolean(respondingOffer)}>
+                  <CheckCircle2 size={17} />
+                  {respondingOffer === "accepted" ? "Accepting" : "Accept offer"}
+                </button>
+                <button className="button button-danger" onClick={() => respondToOffer("declined")} disabled={Boolean(respondingOffer)}>
+                  <XCircle size={17} />
+                  {respondingOffer === "declined" ? "Declining" : "Decline offer"}
+                </button>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="panel panel-wide">
           <h2>Application timeline</h2>
           <ol className="timeline">
@@ -89,7 +153,7 @@ export function CandidateApplicationDetail({ id }: { id: string }) {
           ) : <p>No resume record.</p>}
           <h2>Application ID</h2>
           <code>{application.id}</code>
-          <a className="text-link" href="mailto:careers@example.com">
+          <a className="text-link" href={`mailto:${CAREERS_CONTACT_EMAIL}`}>
             <Download size={16} />
             Contact hiring support
           </a>

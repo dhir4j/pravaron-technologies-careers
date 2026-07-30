@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowRight, CalendarDays, MapPin } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { CAREERS_CONTACT_EMAIL } from "@/lib/contact";
 import { formatDate } from "@/lib/format";
 import type { Job } from "@/lib/types";
 import { Feedback, LoadingBlock, StatusBadge } from "@/components/ui";
@@ -111,7 +112,7 @@ export function JobDetail({ slug }: { slug: string }) {
             <aside className="job-support">
               <strong>Questions about this role?</strong>
               <p>Contact the Pravaron Technologies hiring team for role or accessibility support.</p>
-              <a href={`mailto:careers@example.com?subject=${encodeURIComponent(job.title)}`}>careers@example.com</a>
+              <a href={`mailto:${CAREERS_CONTACT_EMAIL}?subject=${encodeURIComponent(job.title)}`}>{CAREERS_CONTACT_EMAIL}</a>
             </aside>
           </div>
         </div>

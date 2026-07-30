@@ -35,6 +35,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (typeof window !== "undefined" && window.location.pathname.startsWith("/interview/")) {
+      setLoading(false);
+      return;
+    }
     void refresh();
   }, [refresh]);
 

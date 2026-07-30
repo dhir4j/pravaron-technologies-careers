@@ -12,7 +12,7 @@ export function AdminJobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [busyJobId, setBusyJobId] = useState("");
+  const [busyJobId, setBusyJobId] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -33,7 +33,7 @@ export function AdminJobs() {
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Duplicate failed");
     } finally {
-      setBusyJobId("");
+      setBusyJobId(null);
     }
   }
 
@@ -45,26 +45,25 @@ export function AdminJobs() {
         method: "PATCH",
         body: { status },
       });
-      setJobs((currentJobs) => currentJobs.map((job) => (job.id === id ? response.job : job)));
+      setJobs((current) => current.map((job) => (job.id === id ? response.job : job)));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Status update failed");
     } finally {
-      setBusyJobId("");
+      setBusyJobId(null);
     }
   }
 
   async function deleteJob(job: Job) {
-    const confirmed = window.confirm(`Delete "${job.title}"? This cannot be undone.`);
-    if (!confirmed) return;
+    if (!window.confirm(`Delete ${job.title}? This can only be undone from a backup.`)) return;
     setError("");
     setBusyJobId(job.id);
     try {
       await api(`/admin/jobs/${job.id}`, { method: "DELETE" });
-      setJobs((currentJobs) => currentJobs.filter((item) => item.id !== job.id));
+      setJobs((current) => current.filter((item) => item.id !== job.id));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Delete failed");
     } finally {
-      setBusyJobId("");
+      setBusyJobId(null);
     }
   }
 
@@ -90,42 +89,14 @@ export function AdminJobs() {
                   <td>{job.department || "Not assigned"}</td>
                   <td>{formatDate(job.updated_at)}</td>
                   <td className="table-actions">
-                    <button
-                      className="icon-button"
-                      disabled={busyJobId === job.id}
-                      onClick={() => void duplicate(job.id)}
-                      title="Duplicate job"
-                    >
-                      <Copy size={17} />
-                    </button>
+                    <button className="icon-button" disabled={busyJobId === job.id} onClick={() => void duplicate(job.id)} title="Duplicate job"><Copy size={17} /></button>
                     {job.status === "paused" ? (
-                      <button
-                        className="icon-button"
-                        disabled={busyJobId === job.id}
-                        onClick={() => void setStatus(job.id, "published")}
-                        title="Resume job"
-                      >
-                        <Play size={17} />
-                      </button>
+                      <button className="icon-button" disabled={busyJobId === job.id} onClick={() => void setStatus(job.id, "published")} title="Resume job"><Play size={17} /></button>
                     ) : (
-                      <button
-                        className="icon-button"
-                        disabled={busyJobId === job.id}
-                        onClick={() => void setStatus(job.id, "paused")}
-                        title="Pause job"
-                      >
-                        <Pause size={17} />
-                      </button>
+                      <button className="icon-button" disabled={busyJobId === job.id} onClick={() => void setStatus(job.id, "paused")} title="Pause job"><Pause size={17} /></button>
                     )}
                     <Link className="icon-button" href={`/admin/jobs/${job.id}`} title="Edit job"><Edit3 size={17} /></Link>
-                    <button
-                      className="icon-button icon-button-danger"
-                      disabled={busyJobId === job.id}
-                      onClick={() => void deleteJob(job)}
-                      title="Delete job"
-                    >
-                      <Trash2 size={17} />
-                    </button>
+                    <button className="icon-button icon-button-danger" disabled={busyJobId === job.id} onClick={() => void deleteJob(job)} title="Delete job"><Trash2 size={17} /></button>
                   </td>
                 </tr>
               ))}

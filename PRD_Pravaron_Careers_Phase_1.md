@@ -2,13 +2,13 @@
 
 # Pravaron Careers — Phase 1
 
-**Product:** Pravaron Careers  
-**Company:** Pravaron Technologies  
-**Primary domain:** `careers.pravarontechnologies.com`  
-**Promotional redirect:** `workat.pravarontechnologies.com`  
-**Document version:** 1.0  
-**Phase:** Phase 1 — Careers Portal and Applicant Tracking System  
-**Status:** Ready for product design and development  
+**Product:** Pravaron Careers
+**Company:** Pravaron Technologies
+**Primary domain:** `careers.pravarontechnologies.com`
+**Promotional redirect:** `workat.pravarontechnologies.com`
+**Document version:** 1.0
+**Phase:** Phase 1 — Careers Portal and Applicant Tracking System
+**Status:** Ready for product design and development
 
 ---
 
@@ -2157,9 +2157,9 @@ Phase 1 is complete when Pravaron Technologies can:
 
 ## 41. Product Contact
 
-**Company:** Pravaron Technologies  
-**Product:** Pravaron Careers  
-**Careers domain:** `careers.pravarontechnologies.com`  
-**Promotional domain:** `workat.pravarontechnologies.com`  
-**General email:** `contact@pravarontechnologies.com`  
+**Company:** Pravaron Technologies
+**Product:** Pravaron Careers
+**Careers domain:** `careers.pravarontechnologies.com`
+**Promotional domain:** `workat.pravarontechnologies.com`
+**General email:** `contact@pravarontechnologies.com`
 **Recommended recruitment email:** `careers@example.com`

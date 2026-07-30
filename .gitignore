@@ -30,6 +30,7 @@ backend/
 
 # Local agent and editor state
 .omx/
+.omc/
 .vscode/
 .idea/
 .DS_Store

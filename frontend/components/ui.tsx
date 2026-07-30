@@ -6,7 +6,8 @@ export function StatusBadge({ value }: { value: string }) {
   const tone =
     normalized.includes("reject") || normalized.includes("withdraw") || normalized.includes("closed")
       ? "danger"
-      : normalized.includes("hire") ||
+      : normalized.includes("live") ||
+          normalized.includes("hire") ||
           normalized.includes("offer") ||
           normalized.includes("shortlist") ||
           normalized.includes("published")

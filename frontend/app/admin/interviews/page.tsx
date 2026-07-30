@@ -1,6 +1,7 @@
-import { Suspense } from "react";
-import { InterviewPage } from "@/components/interview-page";
+import { InterviewSetup } from "@/components/interview-setup";
+
+export const metadata = { title: "Interview setup - Admin - Pravaron Careers" };
 
 export default function AdminInterviewsPage() {
-  return <Suspense fallback={<div>Loading interviews</div>}><InterviewPage /></Suspense>;
+  return <InterviewSetup />;
 }

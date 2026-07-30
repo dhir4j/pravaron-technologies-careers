@@ -92,14 +92,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         {mode === "register" ? (
           <label>
             <span>Full name</span>
-            <input name="full_name" autoComplete="name" required />
+            <input name="full_name" autoComplete="name" required suppressHydrationWarning />
           </label>
         ) : null}
         <label>
           <span>Email address</span>
           <div className="input-with-icon">
             <Mail size={18} aria-hidden="true" />
-            <input name="email" type="email" autoComplete="email" required />
+            <input name="email" type="email" autoComplete="email" required suppressHydrationWarning />
           </div>
         </label>
         <label>
@@ -110,6 +110,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
               className="input-icon-button"
               onClick={() => setShowPassword((value) => !value)}
               aria-label={showPassword ? "Hide password" : "Show password"}
+              suppressHydrationWarning
             >
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
@@ -119,13 +120,14 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
               autoComplete={mode === "login" ? "current-password" : "new-password"}
               minLength={8}
               required
+              suppressHydrationWarning
             />
           </div>
           {mode === "register" ? (
             <small>Use at least 8 characters with one letter and one number.</small>
           ) : null}
         </label>
-        <button className="button button-primary button-wide" disabled={loading}>
+        <button className="button button-primary button-wide" disabled={loading} suppressHydrationWarning>
           {loading ? "Please wait" : mode === "login" ? "Sign in" : "Create profile"}
         </button>
       </form>

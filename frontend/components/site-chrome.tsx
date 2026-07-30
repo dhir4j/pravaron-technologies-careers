@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { BriefcaseBusiness, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
+import { CAREERS_CONTACT_EMAIL } from "@/lib/contact";
 
 const publicLinks = [
   { href: "/", label: "Careers" },
@@ -127,8 +128,8 @@ export function SiteFooter() {
             Build agentic AI, automation platforms, and intelligent systems that make business operations more autonomous.
           </p>
           <p className="footer-address">O-621, Block-A, EON Fairfox, Sector-140A, Noida.</p>
-          <a className="footer-email" href="mailto:careers@example.com">
-            careers@example.com
+          <a className="footer-email" href={`mailto:${CAREERS_CONTACT_EMAIL}`}>
+            {CAREERS_CONTACT_EMAIL}
           </a>
         </div>
         <div>
@@ -144,8 +145,15 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="footer-base">
-        <span>© 2026 Pravaron Technologies Pvt. Ltd.</span>
-        <span>Noida, India</span>
+        <div>
+          <span>© 2026 Pravaron Technologies Pvt. Ltd.</span>
+          <span> · </span>
+          <span>Noida, India</span>
+        </div>
+        <div style={{ display: 'flex', gap: '16px' }}>
+          <Link href="/privacy">Privacy Policy</Link>
+          <Link href="/terms">Terms of Service</Link>
+        </div>
       </div>
     </footer>
   );

@@ -1,17 +1,17 @@
 # Pravaron Careers — Technical Architecture & Implementation Specification
 
-**Product:** Pravaron Careers  
-**Company:** Pravaron Technologies  
-**Document type:** Technical Design Document / Engineering Specification  
-**Version:** 1.0  
-**Target release:** Phase 1  
-**Primary domain:** `careers.pravarontechnologies.com`  
-**Promotional redirect:** `workat.pravarontechnologies.com`  
-**Frontend:** Next.js + TypeScript  
-**Backend:** Flask + Python  
-**Database:** PostgreSQL  
-**Backend deployment:** PythonAnywhere  
-**Frontend deployment:** Vercel recommended; static export on PythonAnywhere supported with limitations  
+**Product:** Pravaron Careers
+**Company:** Pravaron Technologies
+**Document type:** Technical Design Document / Engineering Specification
+**Version:** 1.0
+**Target release:** Phase 1
+**Primary domain:** `careers.pravarontechnologies.com`
+**Promotional redirect:** `workat.pravarontechnologies.com`
+**Frontend:** Next.js + TypeScript
+**Backend:** Flask + Python
+**Database:** PostgreSQL
+**Backend deployment:** PythonAnywhere
+**Frontend deployment:** Vercel recommended; static export on PythonAnywhere supported with limitations
 **Source strategy:** Extract and reuse the existing applicant-panel code previously embedded in `pravarontechnologies.com`
 
 ---
