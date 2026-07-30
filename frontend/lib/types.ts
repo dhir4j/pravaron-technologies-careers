@@ -87,6 +87,7 @@ export interface Resume {
   original_filename: string;
   content_type: string;
   size_bytes: number;
+  page_count?: number | null;
   version: number;
   scan_status: string;
   created_at: string;
@@ -107,6 +108,7 @@ export interface EmailApplicationAttachment {
   filename: string;
   content_type?: string;
   size_bytes?: number;
+  page_count?: number | null;
 }
 
 export interface EmailApplicationInfo {

@@ -32,6 +32,11 @@ function displayValue(value: unknown): string {
   return String(value);
 }
 
+function formatPageCount(pageCount?: number | null): string {
+  if (!pageCount) return "";
+  return ` | ${pageCount} ${pageCount === 1 ? "page" : "pages"}`;
+}
+
 function answerEntries(answers?: Record<string, unknown>) {
   return Object.entries(answers ?? {}).filter(([key]) => key !== "email" && key !== "email_import_message_ids");
 }
@@ -300,13 +305,13 @@ export function AdminApplicationDetail({ id }: { id: string }) {
                     attachment.resume_id ? (
                       <a className="file-summary" href={apiUrl(`/resumes/${attachment.resume_id}/download`)} key={attachment.resume_id}>
                         <FileText size={22} />
-                        <span><strong>{attachment.filename}</strong><small>{attachment.size_bytes ? formatFileSize(attachment.size_bytes) : "Attachment"}</small></span>
+                        <span><strong>{attachment.filename}</strong><small>{attachment.size_bytes ? formatFileSize(attachment.size_bytes) : "Attachment"}{formatPageCount(attachment.page_count)}</small></span>
                         <Download size={16} />
                       </a>
                     ) : (
                       <div className="file-summary" key={attachment.filename}>
                         <FileText size={22} />
-                        <span><strong>{attachment.filename}</strong><small>{attachment.size_bytes ? formatFileSize(attachment.size_bytes) : "Attachment"}</small></span>
+                        <span><strong>{attachment.filename}</strong><small>{attachment.size_bytes ? formatFileSize(attachment.size_bytes) : "Attachment"}{formatPageCount(attachment.page_count)}</small></span>
                       </div>
                     )
                   ))}
@@ -329,7 +334,7 @@ export function AdminApplicationDetail({ id }: { id: string }) {
             {application.resume ? (
               <a className="file-summary" href={apiUrl(`/resumes/${application.resume.id}/download`)}>
                 <FileText size={22} />
-                <span><strong>{application.resume.original_filename}</strong><small>Resume version {application.resume.version} | {formatFileSize(application.resume.size_bytes)}</small></span>
+                <span><strong>{application.resume.original_filename}</strong><small>Resume version {application.resume.version} | {formatFileSize(application.resume.size_bytes)}{formatPageCount(application.resume.page_count)}</small></span>
                 <Download size={16} />
               </a>
             ) : null}
