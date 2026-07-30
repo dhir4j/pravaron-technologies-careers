@@ -20,8 +20,15 @@ type SyncSummary = {
 };
 
 type BatchMode = "create" | "existing";
+type SourceFilter = "all" | "email" | "careers_website" | "linkedin";
 
 const STATUSES = ["New", "Assigned for Review", "Under Review", "Shortlisted", "Interview Scheduled", "Offer Sent", "Hired", "Rejected", "Withdrawn"];
+const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
+  { value: "all", label: "All sources" },
+  { value: "email", label: "Email" },
+  { value: "careers_website", label: "Portal" },
+  { value: "linkedin", label: "LinkedIn" },
+];
 
 const defaultBatchEmail = {
   purpose: "Application update",
@@ -31,6 +38,20 @@ const defaultBatchEmail = {
   html_body: "<p>Hi {{candidate_name}},</p><p>Thank you for applying for <strong>{{job_title}}</strong> at Pravaron Technologies.</p><p>Your application status is now <strong>{{application_status}}</strong>.</p><p><a href=\"{{application_url}}\">Open your application dashboard</a></p><p>Regards,<br />Pravaron Careers Team</p>",
 };
 
+function sourceKey(source?: string | null) {
+  if (source === "email") return "email";
+  if (source === "linkedin") return "linkedin";
+  if (source === "careers_website" || !source) return "portal";
+  return "other";
+}
+
+function sourceLabel(source?: string | null) {
+  if (source === "email") return "Email";
+  if (source === "linkedin") return "LinkedIn";
+  if (source === "careers_website" || !source) return "Portal";
+  return source.replace(/[_-]+/g, " ");
+}
+
 export function AdminApplications() {
   const [items, setItems] = useState<Application[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -38,6 +59,7 @@ export function AdminApplications() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [jobId, setJobId] = useState("");
+  const [source, setSource] = useState<SourceFilter>("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -54,13 +76,14 @@ export function AdminApplications() {
   const selectedCount = selectedIds.length;
   const allVisibleSelected = items.length > 0 && items.every((item) => selectedIds.includes(item.id));
 
-  const currentQuery = useCallback((nextSearch = search, nextStatus = status, nextJobId = jobId) => {
+  const currentQuery = useCallback((nextSearch = search, nextStatus = status, nextJobId = jobId, nextSource = source) => {
     const params = new URLSearchParams();
     if (nextSearch.trim()) params.set("search", nextSearch.trim());
     if (nextStatus) params.set("status", nextStatus);
     if (nextJobId) params.set("job_id", nextJobId);
+    if (nextSource !== "all") params.set("source", nextSource);
     return params.size ? `?${params}` : "";
-  }, [jobId, search, status]);
+  }, [jobId, search, source, status]);
 
   const load = useCallback((query = "") => {
     setLoading(true);
@@ -87,7 +110,7 @@ export function AdminApplications() {
   useEffect(() => {
     const timer = window.setTimeout(() => load(currentQuery()), 250);
     return () => window.clearTimeout(timer);
-  }, [search, status, jobId, load, currentQuery]);
+  }, [search, status, jobId, source, load, currentQuery]);
 
   const selectedApplications = useMemo(() => items.filter((item) => selectedIds.includes(item.id)), [items, selectedIds]);
 
@@ -237,6 +260,9 @@ export function AdminApplications() {
           <option value="">All jobs</option>
           {jobs.map((job) => <option value={job.id} key={job.id}>{job.title}</option>)}
         </select>
+        <select value={source} onChange={(event) => setSource(event.target.value as SourceFilter)} aria-label="Filter by source">
+          {SOURCE_FILTERS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
+        </select>
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter by status">
           <option value="">All statuses</option>
           {STATUSES.map((value) => <option key={value}>{value}</option>)}
@@ -273,7 +299,7 @@ export function AdminApplications() {
                     <td><strong>{application.candidate_analysis?.recommended_track || "-"}</strong><small>{[application.candidate_analysis?.graduation_year, application.candidate_analysis?.location_priority].filter(Boolean).join(" | ")}</small></td>
                     <td>{application.candidate_analysis?.suitability_score ?? "-"}</td>
                     <td>{formatDate(application.created_at)}</td>
-                    <td>{application.source === "email" ? "Mail" : application.source || "Direct"}</td>
+                    <td><span className={`source-pill source-pill-${sourceKey(application.source)}`}>{sourceLabel(application.source)}</span></td>
                     <td><div className="table-actions"><button className="icon-button" title="Analyze applicant" aria-label="Analyze applicant" onClick={() => analyzeOne(application)} disabled={Boolean(actionId)}><BarChart3 size={17} /></button><button className="icon-button success" title="Approve applicant" aria-label="Approve applicant" onClick={() => decide(application, "Shortlisted")} disabled={isFinal || Boolean(actionId)}><CheckCircle2 size={17} /></button><button className="icon-button danger" title="Reject applicant" aria-label="Reject applicant" onClick={() => decide(application, "Rejected")} disabled={isFinal || Boolean(actionId)}><XCircle size={17} /></button></div></td>
                     <td><Link className="icon-button" href={`/admin/applications/${application.id}`}><ArrowRight size={17} /></Link></td>
                   </tr>

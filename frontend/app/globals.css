@@ -662,7 +662,11 @@ a.file-summary:hover { color: var(--accent); }
 .field-label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; color: var(--ink); }
 .field { /* inherits global input/select/textarea styles Ã¢â‚¬â€ no additional rules needed */ }
 .table-actions { display: flex; justify-content: flex-end; gap: 6px; }
-.admin-filter-bar { grid-template-columns: minmax(320px, 1fr) 220px auto auto auto; margin-bottom: 18px; }
+.admin-filter-bar { grid-template-columns: minmax(320px, 1fr) 220px 150px auto auto auto; margin-bottom: 18px; }
+.source-pill { display: inline-flex; align-items: center; min-height: 24px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink-2); font-size: 11px; font-weight: 750; line-height: 1.1; }
+.source-pill-email { color: #185a8d; background: #eaf4fb; border-color: rgba(24, 90, 141, .18); }
+.source-pill-linkedin { color: #075985; background: #e0f2fe; border-color: rgba(7, 89, 133, .2); }
+.source-pill-portal { color: var(--success); background: var(--success-soft); border-color: rgba(24,118,75,.18); }
 
 /* Assessment question UI */
 .mcq-options { display: flex; flex-direction: column; gap: 10px; }
