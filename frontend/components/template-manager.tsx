@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { Copy, Eye, Plus } from "lucide-react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { humanize } from "@/lib/format";
 import { Feedback, LoadingBlock, PageIntro, StatusBadge } from "@/components/ui";
@@ -15,9 +16,32 @@ interface Template {
   is_active: boolean;
 }
 
+const TEMPLATE_VARIABLES = ["candidate_name", "job_title", "application_status", "application_url", "group_name"];
+const PREVIEW_VALUES: Record<string, string> = {
+  candidate_name: "Aditi Sharma",
+  job_title: "Full-Stack Software Developer",
+  application_status: "Shortlisted",
+  application_url: "https://careers.pravarontechnologies.com/candidate/applications",
+  group_name: "Frontend shortlist July",
+};
+
+function blankTemplate(): Template {
+  return { id: "", key: "", subject: "", html_body: "", text_body: "", version: 0, is_active: true };
+}
+
+function normalizeTemplateKey(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 100);
+}
+
+function renderPreview(value: string) {
+  return TEMPLATE_VARIABLES.reduce((current, key) => current.replaceAll(`{{${key}}}`, PREVIEW_VALUES[key] ?? ""), value);
+}
+
 export function TemplateManager() {
   const [items, setItems] = useState<Template[]>([]);
   const [selected, setSelected] = useState<Template | null>(null);
+  const [query, setQuery] = useState("");
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
@@ -36,14 +60,48 @@ export function TemplateManager() {
 
   useEffect(load, []);
 
+  const filteredItems = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return items.filter((item) => {
+      if (activeFilter === "active" && !item.is_active) return false;
+      if (activeFilter === "inactive" && item.is_active) return false;
+      if (!needle) return true;
+      return [item.key, item.subject, item.text_body].join(" ").toLowerCase().includes(needle);
+    });
+  }, [activeFilter, items, query]);
+
+  function createNew() {
+    setSelected(blankTemplate());
+    setError("");
+    setSuccess("");
+  }
+
+  function duplicateSelected() {
+    if (!selected) return;
+    setSelected({
+      ...selected,
+      id: "",
+      key: `${selected.key}_copy`.slice(0, 100),
+      version: 0,
+      is_active: true,
+    });
+    setError("");
+    setSuccess("");
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected) return;
     setError("");
     setSuccess("");
     const form = new FormData(event.currentTarget);
+    const key = normalizeTemplateKey(String(form.get("key") || selected.key));
+    if (!key) {
+      setError("Template key is required.");
+      return;
+    }
     try {
-      await api(`/admin/templates/${selected.key}`, {
+      await api(`/admin/templates/${key}`, {
         method: "PUT",
         body: {
           subject: form.get("subject"),
@@ -52,7 +110,7 @@ export function TemplateManager() {
           is_active: form.get("is_active") === "on",
         },
       });
-      setSuccess("Email template saved as a new version.");
+      setSuccess(selected.id ? "Email template saved as a new version." : "Email template created.");
       load();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Save failed");
@@ -68,7 +126,16 @@ export function TemplateManager() {
       {success ? <Feedback tone="success">{success}</Feedback> : null}
       <div className="template-layout">
         <nav className="template-list" aria-label="Email templates">
-          {items.map((item) => (
+          <div className="template-list-tools">
+            <button className="button button-primary button-small" onClick={createNew}><Plus size={15} /> New</button>
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search templates" />
+            <select value={activeFilter} onChange={(event) => setActiveFilter(event.target.value as "all" | "active" | "inactive")}>
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+          {filteredItems.map((item) => (
             <button className={selected?.key === item.key ? "active" : ""} onClick={() => setSelected(item)} key={item.key}>
               <span><strong>{humanize(item.key)}</strong><small>Version {item.version}</small></span>
               <StatusBadge value={item.is_active ? "Active" : "Inactive"} />
@@ -77,18 +144,24 @@ export function TemplateManager() {
         </nav>
         {selected ? (
           <form className="panel template-editor" onSubmit={save} key={selected.key}>
-            <div className="panel-heading"><div><h2>{humanize(selected.key)}</h2></div><code>{selected.key}</code></div>
+            <div className="panel-heading">
+              <div><h2>{selected.id ? humanize(selected.key) : "New template"}</h2></div>
+              <button className="button button-secondary button-small" type="button" onClick={duplicateSelected} disabled={!selected.id}><Copy size={15} /> Duplicate</button>
+            </div>
+            <label><span>Template key</span><input name="key" defaultValue={selected.key} placeholder="shortlisted_followup" required /></label>
             <label><span>Subject</span><input name="subject" defaultValue={selected.subject} required /></label>
             <label><span>Plain text body</span><textarea name="text_body" rows={10} defaultValue={selected.text_body} /></label>
             <label><span>HTML body</span><textarea name="html_body" rows={12} defaultValue={selected.html_body} /></label>
             <label className="check-field"><input type="checkbox" name="is_active" defaultChecked={selected.is_active} /><span>Template is active</span></label>
             <div className="template-variables">
               <strong>Available variables</strong>
-              <code>{"{{candidate_name}}"}</code>
-              <code>{"{{job_title}}"}</code>
-              <code>{"{{application_status}}"}</code>
-              <code>{"{{application_url}}"}</code>
+              {TEMPLATE_VARIABLES.map((variable) => <code key={variable}>{`{{${variable}}}`}</code>)}
             </div>
+            <section className="template-preview">
+              <h3><Eye size={16} /> Preview</h3>
+              <strong>{renderPreview(selected.subject) || "Subject preview"}</strong>
+              <pre>{renderPreview(selected.text_body) || "Plain text preview"}</pre>
+            </section>
             <button className="button button-primary">Save template</button>
           </form>
         ) : null}

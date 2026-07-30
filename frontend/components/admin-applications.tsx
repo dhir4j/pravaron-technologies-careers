@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BarChart3, CheckCircle2, FolderPlus, Mail, RefreshCw, Search, UsersRound, X, XCircle } from "lucide-react";
+import { ArrowRight, BarChart3, CheckCircle2, ChevronLeft, ChevronRight, FolderPlus, RefreshCw, Search, UsersRound, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
@@ -21,6 +21,7 @@ type SyncSummary = {
 
 type BatchMode = "create" | "existing";
 type SourceFilter = "all" | "email" | "careers_website" | "linkedin";
+type Pagination = { page: number; per_page: number; total: number; pages: number };
 
 const STATUSES = ["New", "Assigned for Review", "Under Review", "Shortlisted", "Interview Scheduled", "Offer Sent", "Hired", "Rejected", "Withdrawn"];
 const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
@@ -29,14 +30,6 @@ const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
   { value: "careers_website", label: "Portal" },
   { value: "linkedin", label: "LinkedIn" },
 ];
-
-const defaultBatchEmail = {
-  purpose: "Application update",
-  status_to_apply: "Shortlisted",
-  subject: "Update on your application for {{job_title}}",
-  text_body: "Hi {{candidate_name}},\n\nThank you for applying for {{job_title}} at Pravaron Technologies. Your application status is now {{application_status}}.\n\nPlease check your dashboard for details: {{application_url}}\n\nRegards,\nPravaron Careers Team",
-  html_body: "<p>Hi {{candidate_name}},</p><p>Thank you for applying for <strong>{{job_title}}</strong> at Pravaron Technologies.</p><p>Your application status is now <strong>{{application_status}}</strong>.</p><p><a href=\"{{application_url}}\">Open your application dashboard</a></p><p>Regards,<br />Pravaron Careers Team</p>",
-};
 
 function sourceKey(source?: string | null) {
   if (source === "email") return "email";
@@ -60,6 +53,8 @@ export function AdminApplications() {
   const [status, setStatus] = useState("");
   const [jobId, setJobId] = useState("");
   const [source, setSource] = useState<SourceFilter>("all");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, per_page: 20, total: 0, pages: 0 });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -69,27 +64,30 @@ export function AdminApplications() {
   const [success, setSuccess] = useState("");
   const [batchMode, setBatchMode] = useState<BatchMode | null>(null);
   const [groupName, setGroupName] = useState("");
+  const [groupDescription, setGroupDescription] = useState("");
   const [targetGroupId, setTargetGroupId] = useState("");
-  const [batchEmail, setBatchEmail] = useState(defaultBatchEmail);
   const [batchSending, setBatchSending] = useState(false);
 
   const selectedCount = selectedIds.length;
   const allVisibleSelected = items.length > 0 && items.every((item) => selectedIds.includes(item.id));
 
-  const currentQuery = useCallback((nextSearch = search, nextStatus = status, nextJobId = jobId, nextSource = source) => {
+  const currentQuery = useCallback((nextSearch = search, nextStatus = status, nextJobId = jobId, nextSource = source, nextPage = page) => {
     const params = new URLSearchParams();
     if (nextSearch.trim()) params.set("search", nextSearch.trim());
     if (nextStatus) params.set("status", nextStatus);
     if (nextJobId) params.set("job_id", nextJobId);
     if (nextSource !== "all") params.set("source", nextSource);
+    params.set("page", String(nextPage));
+    params.set("per_page", "20");
     return params.size ? `?${params}` : "";
-  }, [jobId, search, source, status]);
+  }, [jobId, page, search, source, status]);
 
   const load = useCallback((query = "") => {
     setLoading(true);
-    api<{ applications: Application[] }>(`/admin/applications${query}`)
+    api<{ applications: Application[]; pagination?: Pagination }>(`/admin/applications${query}`)
       .then((response) => {
         setItems(response.applications);
+        setPagination(response.pagination ?? { page: 1, per_page: 20, total: response.applications.length, pages: 1 });
         setSelectedIds((current) => current.filter((id) => response.applications.some((item) => item.id === id)));
       })
       .catch((requestError: Error) => setError(requestError.message))
@@ -110,7 +108,11 @@ export function AdminApplications() {
   useEffect(() => {
     const timer = window.setTimeout(() => load(currentQuery()), 250);
     return () => window.clearTimeout(timer);
-  }, [search, status, jobId, source, load, currentQuery]);
+  }, [search, status, jobId, source, page, load, currentQuery]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, status, jobId, source]);
 
   const selectedApplications = useMemo(() => items.filter((item) => selectedIds.includes(item.id)), [items, selectedIds]);
 
@@ -198,8 +200,8 @@ export function AdminApplications() {
   function openBatch(mode: BatchMode) {
     setBatchMode(mode);
     setGroupName("");
+    setGroupDescription("");
     setTargetGroupId(groups[0]?.id ?? "");
-    setBatchEmail(defaultBatchEmail);
     setError("");
     setSuccess("");
   }
@@ -212,37 +214,24 @@ export function AdminApplications() {
     setError("");
     setSuccess("");
     try {
-      let groupId = targetGroupId;
-      let recipientIds = selectedIds;
+      let addedCount = 0;
       if (batchMode === "create") {
         const created = await api<{ group: ApplicationGroup; added_application_ids?: string[] }>("/admin/application-groups", {
           method: "POST",
-          body: { name: groupName.trim(), application_ids: selectedIds },
+          body: { name: groupName.trim(), description: groupDescription.trim(), application_ids: selectedIds },
         });
-        groupId = created.group.id;
-        recipientIds = created.added_application_ids?.length ? created.added_application_ids : selectedIds;
+        addedCount = created.added_application_ids?.length ?? 0;
       } else {
-        const added = await api<{ group: ApplicationGroup; added: number; added_application_ids?: string[] }>(`/admin/application-groups/${groupId}/members`, { method: "POST", body: { application_ids: selectedIds } });
-        recipientIds = added.added_application_ids ?? [];
+        const added = await api<{ group: ApplicationGroup; added: number; added_application_ids?: string[] }>(`/admin/application-groups/${targetGroupId}/members`, { method: "POST", body: { application_ids: selectedIds } });
+        addedCount = added.added_application_ids?.length ?? added.added ?? 0;
       }
-      if (!recipientIds.length) {
-        setSuccess("Group already had the selected applicants. No new emails were sent.");
-        setBatchMode(null);
-        setSelectedIds([]);
-        loadGroups();
-        return;
-      }
-      const result = await api<{ sent: number; failed: number }>(`/admin/application-groups/${groupId}/send-email`, {
-        method: "POST",
-        body: { ...batchEmail, application_ids: recipientIds },
-      });
-      setSuccess(`Group saved. Emails sent to ${recipientIds.length} newly added applicant${recipientIds.length === 1 ? "" : "s"}. Sent: ${result.sent}. Failed: ${result.failed}.`);
+      setSuccess(addedCount ? `Group saved with ${addedCount} applicant${addedCount === 1 ? "" : "s"}.` : "Group already had the selected applicants.");
       setBatchMode(null);
       setSelectedIds([]);
       loadGroups();
       load(currentQuery());
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Batch email failed");
+      setError(requestError instanceof Error ? requestError.message : "Group save failed");
     } finally {
       setBatchSending(false);
     }
@@ -250,7 +239,7 @@ export function AdminApplications() {
 
   return (
     <>
-      <PageIntro title="Applications" body="Filter applications, select applicants, create groups, and send batch emails from the queue." />
+      <PageIntro title="Applications" body="Filter applications, review source labels, and create applicant groups from the queue." />
       {error ? <Feedback tone="error">{error}</Feedback> : null}
       {success ? <Feedback tone="success">{success}</Feedback> : null}
 
@@ -283,53 +272,67 @@ export function AdminApplications() {
       ) : null}
 
       {loading ? <LoadingBlock label="Loading applications" /> : items.length ? (
-        <div className="admin-table-wrap">
-          <table className="admin-table selectable-table">
-            <thead><tr><th><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select all visible applications" /></th><th>Candidate</th><th>Role</th><th>Status</th><th>Track</th><th>Score</th><th>Applied</th><th>Source</th><th>Decision</th><th><span className="sr-only">Open</span></th></tr></thead>
-            <tbody>
-              {items.map((application) => {
-                const isFinal = ["Rejected", "Hired", "Withdrawn"].includes(application.internal_status || "");
-                const selected = selectedIds.includes(application.id);
-                return (
-                  <tr key={application.id} className={selected ? "selected" : ""}>
-                    <td><input type="checkbox" checked={selected} onChange={() => toggleRow(application.id)} aria-label={`Select ${application.candidate?.full_name || "applicant"}`} /></td>
-                    <td><strong>{application.candidate?.full_name}</strong><small>{application.candidate?.email}</small></td>
-                    <td><strong>{application.job.title}</strong><small>{application.job.public_code}</small></td>
-                    <td><StatusBadge value={application.internal_status || application.candidate_status} /></td>
-                    <td><strong>{application.candidate_analysis?.recommended_track || "-"}</strong><small>{[application.candidate_analysis?.graduation_year, application.candidate_analysis?.location_priority].filter(Boolean).join(" | ")}</small></td>
-                    <td>{application.candidate_analysis?.suitability_score ?? "-"}</td>
-                    <td>{formatDate(application.created_at)}</td>
-                    <td><span className={`source-pill source-pill-${sourceKey(application.source)}`}>{sourceLabel(application.source)}</span></td>
-                    <td><div className="table-actions"><button className="icon-button" title="Analyze applicant" aria-label="Analyze applicant" onClick={() => analyzeOne(application)} disabled={Boolean(actionId)}><BarChart3 size={17} /></button><button className="icon-button success" title="Approve applicant" aria-label="Approve applicant" onClick={() => decide(application, "Shortlisted")} disabled={isFinal || Boolean(actionId)}><CheckCircle2 size={17} /></button><button className="icon-button danger" title="Reject applicant" aria-label="Reject applicant" onClick={() => decide(application, "Rejected")} disabled={isFinal || Boolean(actionId)}><XCircle size={17} /></button></div></td>
-                    <td><Link className="icon-button" href={`/admin/applications/${application.id}`}><ArrowRight size={17} /></Link></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="admin-table-wrap">
+            <table className="admin-table selectable-table">
+              <thead><tr><th><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select all visible applications" /></th><th>Candidate</th><th>Role</th><th>Status</th><th>Track</th><th>Score</th><th>Applied</th><th>Source</th><th>Decision</th><th><span className="sr-only">Open</span></th></tr></thead>
+              <tbody>
+                {items.map((application) => {
+                  const isFinal = ["Rejected", "Hired", "Withdrawn"].includes(application.internal_status || "");
+                  const selected = selectedIds.includes(application.id);
+                  return (
+                    <tr key={application.id} className={selected ? "selected" : ""}>
+                      <td><input type="checkbox" checked={selected} onChange={() => toggleRow(application.id)} aria-label={`Select ${application.candidate?.full_name || "applicant"}`} /></td>
+                      <td><strong>{application.candidate?.full_name}</strong><small>{application.candidate?.email}</small></td>
+                      <td><strong>{application.job.title}</strong><small>{application.job.public_code}</small></td>
+                      <td><StatusBadge value={application.internal_status || application.candidate_status} /></td>
+                      <td><strong>{application.candidate_analysis?.recommended_track || "-"}</strong><small>{[application.candidate_analysis?.graduation_year, application.candidate_analysis?.location_priority].filter(Boolean).join(" | ")}</small></td>
+                      <td>{application.candidate_analysis?.suitability_score ?? "-"}</td>
+                      <td>{formatDate(application.created_at)}</td>
+                      <td><span className={`source-pill source-pill-${sourceKey(application.source)}`}>{sourceLabel(application.source)}</span></td>
+                      <td><div className="table-actions"><button className="icon-button" title="Analyze applicant" aria-label="Analyze applicant" onClick={() => analyzeOne(application)} disabled={Boolean(actionId)}><BarChart3 size={17} /></button><button className="icon-button success" title="Approve applicant" aria-label="Approve applicant" onClick={() => decide(application, "Shortlisted")} disabled={isFinal || Boolean(actionId)}><CheckCircle2 size={17} /></button><button className="icon-button danger" title="Reject applicant" aria-label="Reject applicant" onClick={() => decide(application, "Rejected")} disabled={isFinal || Boolean(actionId)}><XCircle size={17} /></button></div></td>
+                      <td><Link className="icon-button" href={`/admin/applications/${application.id}`}><ArrowRight size={17} /></Link></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {pagination.pages > 1 ? (
+            <div className="pagination-bar">
+            <button className="icon-button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={pagination.page <= 1} aria-label="Previous page"><ChevronLeft size={17} /></button>
+            {Array.from({ length: pagination.pages }, (_, index) => index + 1)
+              .filter((value) => value === 1 || value === pagination.pages || Math.abs(value - pagination.page) <= 2)
+              .map((value, index, values) => (
+                <span key={value} className="pagination-item-wrap">
+                  {index > 0 && value - values[index - 1] > 1 ? <span className="pagination-gap">...</span> : null}
+                  <button className={`pagination-page ${value === pagination.page ? "active" : ""}`} onClick={() => setPage(value)}>{value}</button>
+                </span>
+              ))}
+            <button className="icon-button" onClick={() => setPage((value) => Math.min(pagination.pages, value + 1))} disabled={pagination.page >= pagination.pages} aria-label="Next page"><ChevronRight size={17} /></button>
+            <span className="pagination-count">{pagination.total} unique applicants</span>
+            </div>
+          ) : null}
+        </>
       ) : <EmptyState title="No applications found" body="Sync the mailbox or adjust the filters to find submissions." />}
 
       {batchMode ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true">
           <section className="batch-email-dialog">
             <div className="batch-email-head">
-              <div><h2>{batchMode === "create" ? "Create group and send email" : "Add to group and send email"}</h2><p>{selectedCount} selected applicant{selectedCount === 1 ? "" : "s"}</p></div>
+              <div><h2>{batchMode === "create" ? "Create group" : "Add to group"}</h2><p>{selectedCount} selected applicant{selectedCount === 1 ? "" : "s"}</p></div>
               <button className="icon-button" onClick={() => setBatchMode(null)} aria-label="Close"><X size={17} /></button>
             </div>
             <div className="batch-email-grid">
               <div className="batch-email-form">
                 {batchMode === "create" ? (
-                  <label><span>Group name</span><input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="e.g. Frontend shortlist July" autoFocus /></label>
+                  <>
+                    <label><span>Group name</span><input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="e.g. Frontend shortlist July" autoFocus /></label>
+                    <label><span>Description</span><textarea rows={5} value={groupDescription} onChange={(event) => setGroupDescription(event.target.value)} placeholder="Optional group note" /></label>
+                  </>
                 ) : (
                   <label><span>Existing group</span><select value={targetGroupId} onChange={(event) => setTargetGroupId(event.target.value)}>{groups.map((group) => <option value={group.id} key={group.id}>{group.name} ({group.member_count})</option>)}</select></label>
                 )}
-                <label><span>Email purpose</span><input value={batchEmail.purpose} onChange={(event) => setBatchEmail((current) => ({ ...current, purpose: event.target.value }))} /></label>
-                <label><span>Status to apply</span><select value={batchEmail.status_to_apply} onChange={(event) => setBatchEmail((current) => ({ ...current, status_to_apply: event.target.value }))}><option value="">Do not change status</option>{STATUSES.map((value) => <option key={value}>{value}</option>)}</select></label>
-                <label><span>Subject</span><input value={batchEmail.subject} onChange={(event) => setBatchEmail((current) => ({ ...current, subject: event.target.value }))} /></label>
-                <label><span>Plain text body</span><textarea rows={7} value={batchEmail.text_body} onChange={(event) => setBatchEmail((current) => ({ ...current, text_body: event.target.value }))} /></label>
-                <label><span>HTML body</span><textarea rows={8} value={batchEmail.html_body} onChange={(event) => setBatchEmail((current) => ({ ...current, html_body: event.target.value }))} /></label>
-                <div className="template-variables"><strong>Variables</strong><code>{"{{candidate_name}}"}</code><code>{"{{job_title}}"}</code><code>{"{{application_status}}"}</code><code>{"{{application_url}}"}</code><code>{"{{group_name}}"}</code></div>
               </div>
               <aside className="batch-email-preview">
                 <h3>Recipients</h3>
@@ -337,7 +340,7 @@ export function AdminApplications() {
                 {selectedApplications.length > 8 ? <p>+{selectedApplications.length - 8} more</p> : null}
               </aside>
             </div>
-            <div className="batch-email-actions"><button className="button button-secondary" onClick={() => setBatchMode(null)}>Cancel</button><button className="button button-primary" onClick={submitBatch} disabled={batchSending}><Mail size={15} />{batchSending ? "Sending" : "Save group and send"}</button></div>
+            <div className="batch-email-actions"><button className="button button-secondary" onClick={() => setBatchMode(null)}>Cancel</button><button className="button button-primary" onClick={submitBatch} disabled={batchSending}>{batchSending ? "Saving" : "Save group"}</button></div>
           </section>
         </div>
       ) : null}

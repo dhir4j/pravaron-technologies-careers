@@ -21,6 +21,7 @@
   --radius: 8px;
   --shadow: 0 22px 70px rgba(55, 20, 18, 0.12);
   --header-height: 72px;
+  --font-manrope: Arial, Helvetica, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -667,6 +668,12 @@ a.file-summary:hover { color: var(--accent); }
 .source-pill-email { color: #185a8d; background: #eaf4fb; border-color: rgba(24, 90, 141, .18); }
 .source-pill-linkedin { color: #075985; background: #e0f2fe; border-color: rgba(7, 89, 133, .2); }
 .source-pill-portal { color: var(--success); background: var(--success-soft); border-color: rgba(24,118,75,.18); }
+.pagination-bar { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 14px; }
+.pagination-item-wrap { display: inline-flex; align-items: center; gap: 7px; }
+.pagination-page { min-width: 34px; height: 34px; padding: 0 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); font-size: 12px; font-weight: 750; }
+.pagination-page.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+.pagination-gap, .pagination-count { color: var(--muted); font-size: 12px; }
+.pagination-count { margin-left: 8px; }
 
 /* Assessment question UI */
 .mcq-options { display: flex; flex-direction: column; gap: 10px; }
@@ -747,14 +754,20 @@ a.file-summary:hover { color: var(--accent); }
 .team-list small { color: var(--muted); font-size: 10px; }
 .template-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); align-items: start; gap: 16px; }
 .template-list { display: grid; gap: 6px; }
-.template-list button { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); }
-.template-list button.active { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
-.template-list button > span { display: grid; gap: 3px; }
+.template-list-tools { display: grid; gap: 8px; margin-bottom: 8px; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); }
+.template-list-tools input, .template-list-tools select { min-height: 40px; font-size: 12px; }
+.template-list > button { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; text-align: left; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); }
+.template-list > button.active { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.template-list > button > span { display: grid; gap: 3px; }
 .template-list strong { font-size: 12px; }
 .template-list small { color: var(--muted); font-size: 10px; }
 .template-variables { display: flex; flex-wrap: wrap; gap: 7px; padding: 14px; background: var(--surface); border-radius: 6px; }
 .template-variables strong { width: 100%; font-size: 12px; }
 .template-variables code { padding: 5px 7px; }
+.template-preview { display: grid; gap: 10px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.template-preview h3 { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; }
+.template-preview > strong { font-size: 13px; }
+.template-preview pre { max-height: 220px; overflow: auto; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font-family: var(--font-mono), monospace; font-size: 11px; line-height: 1.55; }
 .modal-backdrop { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(15,15,15,.65); }
 .modal { width: min(500px, 100%); display: grid; gap: 16px; padding: 28px; background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); }
 .modal h2 { margin: 0; font-size: 26px; }

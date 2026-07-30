@@ -3,15 +3,6 @@ import localFont from "next/font/local";
 import { AuthProvider } from "@/contexts/auth-context";
 import "./globals.css";
 
-const manrope = localFont({
-  src: [
-    { path: "./fonts/OpenSans-Regular.ttf", weight: "400", style: "normal" },
-    { path: "./fonts/OpenSans-Bold.ttf", weight: "700", style: "normal" },
-  ],
-  variable: "--font-manrope",
-  display: "swap",
-});
-
 const mono = localFont({
   src: [
     { path: "./fonts/AdwaitaMono-Regular.ttf", weight: "400", style: "normal" },
@@ -40,7 +31,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" data-scroll-behavior="smooth">
-      <body className={`${manrope.variable} ${mono.variable}`}>
+      <body className={mono.variable}>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
