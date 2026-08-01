@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Eye, FolderPlus, RefreshCw, Search, UsersRound, X, XCircle } from "lucide-react";
+import { ArrowRight, BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Download, Eye, FolderPlus, Mail, RefreshCw, Search, Send, UsersRound, X, XCircle } from "lucide-react";
 import { Document, Page, pdfjs } from "react-pdf";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, apiUrl } from "@/lib/api";
@@ -24,6 +24,15 @@ type BatchMode = "create" | "existing";
 type SourceFilter = "all" | "email" | "careers_website" | "linkedin";
 type Pagination = { page: number; per_page: number; total: number; pages: number };
 type ResumePreview = { url: string; title: string } | null;
+type DecisionStatus = "Shortlisted" | "Rejected";
+type DecisionDraft = {
+  application: Application;
+  internal_status: DecisionStatus;
+  subject: string;
+  text_body: string;
+  html_body: string;
+  to_email: string;
+} | null;
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -79,6 +88,8 @@ export function AdminApplications() {
   const [resumePreview, setResumePreview] = useState<ResumePreview>(null);
   const [resumePages, setResumePages] = useState(0);
   const [resumePage, setResumePage] = useState(1);
+  const [decisionDraft, setDecisionDraft] = useState<DecisionDraft>(null);
+  const [decisionLoading, setDecisionLoading] = useState(false);
 
   const selectedCount = selectedIds.length;
   const allVisibleSelected = items.length > 0 && items.every((item) => selectedIds.includes(item.id));
@@ -152,9 +163,9 @@ export function AdminApplications() {
     setError("");
     setSuccess("");
     try {
-      const response = await api<{ analysis: { checked: number; analyzed: number; cached: number; failed: number; errors: Array<{ application_id: string; error: string }> } }>("/admin/applications/analyze", { method: "POST", body: {} });
+      const response = await api<{ analysis: { checked: number; analyzed: number; cached: number; failed: number; errors: Array<{ application_id: string; error: string }> } }>("/admin/applications/analyze", { method: "POST", body: { application_ids: items.map((item) => item.id) } });
       const result = response.analysis;
-      setSuccess(`Analyzed ${result.analyzed} candidates. Cached ${result.cached}, failed ${result.failed}, checked ${result.checked}.`);
+      setSuccess(`Analyzed current page: ${result.analyzed} new, ${result.cached} cached, ${result.failed} failed, ${result.checked} checked.`);
       if (result.errors?.length) setError(result.errors.slice(0, 2).map((item) => item.error).join(" | "));
       load(currentQuery());
     } catch (requestError) {
@@ -179,26 +190,72 @@ export function AdminApplications() {
     }
   }
 
-  async function decide(application: Application, nextStatus: "Shortlisted" | "Rejected") {
+  async function openDecisionEmail(application: Application, nextStatus: DecisionStatus) {
     setActionId(`${application.id}:${nextStatus}`);
+    setDecisionLoading(true);
     setError("");
     setSuccess("");
     try {
-      const response = await api<{ application: Application }>(`/admin/applications/${application.id}/status`, {
-        method: "PATCH",
-        body: {
-          internal_status: nextStatus,
-          note: nextStatus === "Shortlisted" ? "Applicant approved for the next stage." : "Applicant rejected from the applications queue.",
-          rejection_reason: nextStatus === "Rejected" ? "Role fit" : null,
-        },
-      });
-      setItems((current) => current.map((item) => (item.id === application.id ? { ...item, ...response.application } : item)));
-      setSuccess(`${application.candidate?.full_name || "Applicant"} moved to ${nextStatus}.`);
+      const response = await api<{ email: Omit<NonNullable<DecisionDraft>, "application" | "internal_status"> }>(`/admin/applications/${application.id}/decision-email?internal_status=${nextStatus}`);
+      setDecisionDraft({ application, internal_status: nextStatus, ...response.email });
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Status update failed");
+      setError(requestError instanceof Error ? requestError.message : "Email preview failed");
     } finally {
       setActionId("");
+      setDecisionLoading(false);
     }
+  }
+
+  async function confirmDecisionEmail() {
+    if (!decisionDraft) return;
+    const draft = decisionDraft;
+    setDecisionLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await api<{ application: Application; email_sent: boolean }>(`/admin/applications/${draft.application.id}/decision-email`, {
+        method: "POST",
+        body: {
+          internal_status: draft.internal_status,
+          subject: draft.subject,
+          text_body: draft.text_body,
+          html_body: draft.html_body,
+          note: draft.internal_status === "Shortlisted" ? "Shortlist email sent to candidate." : "Rejection email sent to candidate.",
+          rejection_reason: draft.internal_status === "Rejected" ? "Role fit" : null,
+        },
+      });
+      setItems((current) => current.map((item) => (item.id === draft.application.id ? { ...item, ...response.application } : item)));
+      setSuccess(`${draft.internal_status} email sent to ${draft.to_email}. Status updated.`);
+      setDecisionDraft(null);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Decision email failed");
+    } finally {
+      setDecisionLoading(false);
+    }
+  }
+
+  function exportCurrentPageCsv() {
+    const headers = ["Candidate", "Job", "Job code", "Status", "Score", "Applied", "Source", "Email"];
+    const rows = items.map((application) => [
+      application.candidate?.full_name || "",
+      application.job?.title || "",
+      application.job?.public_code || "",
+      application.internal_status || application.candidate_status || "",
+      String(application.candidate_analysis?.suitability_score ?? ""),
+      formatDate(application.created_at),
+      sourceLabel(application.source),
+      application.candidate?.email || "",
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `pravaron-applications-page-${pagination.page}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   function toggleRow(id: string) {
@@ -279,7 +336,8 @@ export function AdminApplications() {
           {STATUSES.map((value) => <option key={value}>{value}</option>)}
         </select>
         <button className="button button-primary" onClick={syncMail} disabled={syncing}><RefreshCw size={17} />{syncing ? "Syncing" : "Sync mail"}</button>
-        <button className="button button-secondary" onClick={analyzeResumes} disabled={analyzing}>{analyzing ? "Analyzing" : "Analyze resumes"}</button>
+        <button className="button button-secondary" onClick={analyzeResumes} disabled={analyzing || !items.length}>{analyzing ? "Analyzing" : "Analyze page"}</button>
+        <button className="button button-secondary" onClick={exportCurrentPageCsv} disabled={!items.length}><Download size={17} />CSV</button>
       </div>
 
       {selectedCount ? (
@@ -313,7 +371,7 @@ export function AdminApplications() {
                       <td>{formatDate(application.created_at)}</td>
                       <td><span className={`source-pill source-pill-${sourceKey(application.source)}`}>{sourceLabel(application.source)}</span></td>
                       <td><button className="icon-button" title="Preview resume" aria-label="Preview resume" onClick={() => openResumePreview(application)} disabled={!canPreviewResume(application)}><Eye size={17} /></button></td>
-                      <td><div className="table-actions"><button className="icon-button" title="Analyze applicant" aria-label="Analyze applicant" onClick={() => analyzeOne(application)} disabled={Boolean(actionId)}><BarChart3 size={17} /></button><button className="icon-button success" title="Approve applicant" aria-label="Approve applicant" onClick={() => decide(application, "Shortlisted")} disabled={isFinal || Boolean(actionId)}><CheckCircle2 size={17} /></button><button className="icon-button danger" title="Reject applicant" aria-label="Reject applicant" onClick={() => decide(application, "Rejected")} disabled={isFinal || Boolean(actionId)}><XCircle size={17} /></button></div></td>
+                      <td><div className="table-actions"><button className="icon-button" title="Analyze applicant" aria-label="Analyze applicant" onClick={() => analyzeOne(application)} disabled={Boolean(actionId)}><BarChart3 size={17} /></button><button className="icon-button success" title="Approve applicant" aria-label="Approve applicant" onClick={() => openDecisionEmail(application, "Shortlisted")} disabled={isFinal || Boolean(actionId)}><CheckCircle2 size={17} /></button><button className="icon-button danger" title="Reject applicant" aria-label="Reject applicant" onClick={() => openDecisionEmail(application, "Rejected")} disabled={isFinal || Boolean(actionId)}><XCircle size={17} /></button></div></td>
                       <td><Link className="icon-button" href={`/admin/applications/${application.id}`}><ArrowRight size={17} /></Link></td>
                     </tr>
                   );
@@ -389,6 +447,36 @@ export function AdminApplications() {
               >
                 <Page pageNumber={resumePage} width={820} renderTextLayer={false} renderAnnotationLayer={false} />
               </Document>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {decisionDraft ? (
+        <div className="modal-backdrop decision-email-backdrop" role="dialog" aria-modal="true">
+          <section className="decision-email-dialog">
+            <div className="batch-email-head">
+              <div>
+                <h2>{decisionDraft.internal_status === "Shortlisted" ? "Approve and email candidate" : "Reject and email candidate"}</h2>
+                <p>{decisionDraft.application.candidate?.full_name} · {decisionDraft.to_email}</p>
+              </div>
+              <button className="icon-button" onClick={() => setDecisionDraft(null)} aria-label="Close decision email"><X size={17} /></button>
+            </div>
+            <div className="decision-email-grid">
+              <div className="batch-email-form">
+                <label><span>Subject</span><input value={decisionDraft.subject} onChange={(event) => setDecisionDraft((current) => current ? { ...current, subject: event.target.value } : current)} /></label>
+                <label><span>Plain text body</span><textarea rows={12} value={decisionDraft.text_body} onChange={(event) => setDecisionDraft((current) => current ? { ...current, text_body: event.target.value } : current)} /></label>
+                <label><span>HTML body</span><textarea rows={12} value={decisionDraft.html_body} onChange={(event) => setDecisionDraft((current) => current ? { ...current, html_body: event.target.value } : current)} /></label>
+              </div>
+              <aside className="decision-email-preview">
+                <h3><Mail size={16} /> Preview</h3>
+                <strong>{decisionDraft.subject}</strong>
+                <iframe title="Decision email preview" srcDoc={decisionDraft.html_body} />
+              </aside>
+            </div>
+            <div className="batch-email-actions">
+              <button className="button button-secondary" onClick={() => setDecisionDraft(null)}>Cancel</button>
+              <button className="button button-primary" onClick={confirmDecisionEmail} disabled={decisionLoading}><Send size={15} />{decisionLoading ? "Sending" : "Send email and update status"}</button>
             </div>
           </section>
         </div>
