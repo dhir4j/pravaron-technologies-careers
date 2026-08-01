@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BarChart3, CheckCircle2, ChevronLeft, ChevronRight, FolderPlus, RefreshCw, Search, UsersRound, X, XCircle } from "lucide-react";
+import { ArrowRight, BarChart3, CheckCircle2, ChevronLeft, ChevronRight, Eye, FolderPlus, RefreshCw, Search, UsersRound, X, XCircle } from "lucide-react";
+import { Document, Page, pdfjs } from "react-pdf";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { api, apiUrl } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { Application, ApplicationGroup, Job } from "@/lib/types";
 import { EmptyState, Feedback, LoadingBlock, PageIntro, StatusBadge } from "@/components/ui";
@@ -22,6 +23,9 @@ type SyncSummary = {
 type BatchMode = "create" | "existing";
 type SourceFilter = "all" | "email" | "careers_website" | "linkedin";
 type Pagination = { page: number; per_page: number; total: number; pages: number };
+type ResumePreview = { url: string; title: string } | null;
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
 const STATUSES = ["New", "Assigned for Review", "Under Review", "Shortlisted", "Interview Scheduled", "Offer Sent", "Hired", "Rejected", "Withdrawn"];
 const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
@@ -43,6 +47,11 @@ function sourceLabel(source?: string | null) {
   if (source === "linkedin") return "LinkedIn";
   if (source === "careers_website" || !source) return "Portal";
   return source.replace(/[_-]+/g, " ");
+}
+
+function canPreviewResume(application: Application) {
+  const resume = application.resume;
+  return Boolean(resume && (resume.content_type === "application/pdf" || resume.original_filename.toLowerCase().endsWith(".pdf")));
 }
 
 export function AdminApplications() {
@@ -67,6 +76,9 @@ export function AdminApplications() {
   const [groupDescription, setGroupDescription] = useState("");
   const [targetGroupId, setTargetGroupId] = useState("");
   const [batchSending, setBatchSending] = useState(false);
+  const [resumePreview, setResumePreview] = useState<ResumePreview>(null);
+  const [resumePages, setResumePages] = useState(0);
+  const [resumePage, setResumePage] = useState(1);
 
   const selectedCount = selectedIds.length;
   const allVisibleSelected = items.length > 0 && items.every((item) => selectedIds.includes(item.id));
@@ -206,6 +218,16 @@ export function AdminApplications() {
     setSuccess("");
   }
 
+  function openResumePreview(application: Application) {
+    if (!application.resume) return;
+    setResumePages(0);
+    setResumePage(1);
+    setResumePreview({
+      url: apiUrl(`/resumes/${application.resume.id}/download?disposition=inline`),
+      title: application.resume.original_filename,
+    });
+  }
+
   async function submitBatch() {
     if (!batchMode || !selectedIds.length) return;
     if (batchMode === "create" && !groupName.trim()) { setError("Group name is required."); return; }
@@ -275,7 +297,7 @@ export function AdminApplications() {
         <>
           <div className="admin-table-wrap">
             <table className="admin-table selectable-table">
-              <thead><tr><th><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select all visible applications" /></th><th>Candidate</th><th>Role</th><th>Status</th><th>Track</th><th>Score</th><th>Applied</th><th>Source</th><th>Decision</th><th><span className="sr-only">Open</span></th></tr></thead>
+              <thead><tr><th><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Select all visible applications" /></th><th>Candidate</th><th>Role</th><th>Status</th><th>Track</th><th>Score</th><th>Applied</th><th>Source</th><th>Resume</th><th>Decision</th><th><span className="sr-only">Open</span></th></tr></thead>
               <tbody>
                 {items.map((application) => {
                   const isFinal = ["Rejected", "Hired", "Withdrawn"].includes(application.internal_status || "");
@@ -283,13 +305,14 @@ export function AdminApplications() {
                   return (
                     <tr key={application.id} className={selected ? "selected" : ""}>
                       <td><input type="checkbox" checked={selected} onChange={() => toggleRow(application.id)} aria-label={`Select ${application.candidate?.full_name || "applicant"}`} /></td>
-                      <td><strong>{application.candidate?.full_name}</strong><small>{application.candidate?.email}</small></td>
+                      <td><strong>{application.candidate?.full_name}</strong></td>
                       <td><strong>{application.job.title}</strong><small>{application.job.public_code}</small></td>
                       <td><StatusBadge value={application.internal_status || application.candidate_status} /></td>
                       <td><strong>{application.candidate_analysis?.recommended_track || "-"}</strong><small>{[application.candidate_analysis?.graduation_year, application.candidate_analysis?.location_priority].filter(Boolean).join(" | ")}</small></td>
                       <td>{application.candidate_analysis?.suitability_score ?? "-"}</td>
                       <td>{formatDate(application.created_at)}</td>
                       <td><span className={`source-pill source-pill-${sourceKey(application.source)}`}>{sourceLabel(application.source)}</span></td>
+                      <td><button className="icon-button" title="Preview resume" aria-label="Preview resume" onClick={() => openResumePreview(application)} disabled={!canPreviewResume(application)}><Eye size={17} /></button></td>
                       <td><div className="table-actions"><button className="icon-button" title="Analyze applicant" aria-label="Analyze applicant" onClick={() => analyzeOne(application)} disabled={Boolean(actionId)}><BarChart3 size={17} /></button><button className="icon-button success" title="Approve applicant" aria-label="Approve applicant" onClick={() => decide(application, "Shortlisted")} disabled={isFinal || Boolean(actionId)}><CheckCircle2 size={17} /></button><button className="icon-button danger" title="Reject applicant" aria-label="Reject applicant" onClick={() => decide(application, "Rejected")} disabled={isFinal || Boolean(actionId)}><XCircle size={17} /></button></div></td>
                       <td><Link className="icon-button" href={`/admin/applications/${application.id}`}><ArrowRight size={17} /></Link></td>
                     </tr>
@@ -341,6 +364,32 @@ export function AdminApplications() {
               </aside>
             </div>
             <div className="batch-email-actions"><button className="button button-secondary" onClick={() => setBatchMode(null)}>Cancel</button><button className="button button-primary" onClick={submitBatch} disabled={batchSending}>{batchSending ? "Saving" : "Save group"}</button></div>
+          </section>
+        </div>
+      ) : null}
+
+      {resumePreview ? (
+        <div className="modal-backdrop resume-preview-backdrop" role="dialog" aria-modal="true">
+          <section className="resume-preview-dialog">
+            <div className="resume-preview-head">
+              <div><h2>Resume preview</h2><p>{resumePreview.title}</p></div>
+              <button className="icon-button" onClick={() => setResumePreview(null)} aria-label="Close resume preview"><X size={17} /></button>
+            </div>
+            <div className="resume-preview-toolbar">
+              <button className="icon-button" onClick={() => setResumePage((value) => Math.max(1, value - 1))} disabled={resumePage <= 1} aria-label="Previous resume page"><ChevronLeft size={17} /></button>
+              <span>{resumePages ? `Page ${resumePage} of ${resumePages}` : "Loading"}</span>
+              <button className="icon-button" onClick={() => setResumePage((value) => Math.min(resumePages || value, value + 1))} disabled={!resumePages || resumePage >= resumePages} aria-label="Next resume page"><ChevronRight size={17} /></button>
+            </div>
+            <div className="resume-preview-canvas">
+              <Document
+                file={{ url: resumePreview.url, withCredentials: true } as { url: string }}
+                loading={<LoadingBlock label="Loading resume" />}
+                error={<Feedback tone="error">Resume preview failed. Use download from the detail page.</Feedback>}
+                onLoadSuccess={({ numPages }) => setResumePages(numPages)}
+              >
+                <Page pageNumber={resumePage} width={820} renderTextLayer={false} renderAnnotationLayer={false} />
+              </Document>
+            </div>
           </section>
         </div>
       ) : null}
