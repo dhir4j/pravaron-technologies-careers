@@ -282,6 +282,7 @@ export function AdminApplications() {
         body: {
           internal_status: draft.internal_status,
           subject: draft.subject,
+          to_email: draft.to_email,
           text_body: draft.text_body,
           html_body: draft.html_body,
           note: draft.internal_status === "Shortlisted" ? "Shortlist email sent to candidate." : "Rejection email sent to candidate.",
@@ -522,12 +523,13 @@ export function AdminApplications() {
             <div className="batch-email-head">
               <div>
                 <h2>{decisionDraft.internal_status === "Shortlisted" ? "Approve and email candidate" : "Reject and email candidate"}</h2>
-                <p>{decisionDraft.application.candidate?.full_name} · {decisionDraft.to_email}</p>
+                <p>{decisionDraft.application.candidate?.full_name} · edit recipient before sending</p>
               </div>
               <button className="icon-button" onClick={() => setDecisionDraft(null)} aria-label="Close decision email"><X size={17} /></button>
             </div>
             <div className="decision-email-grid">
               <div className="batch-email-form">
+                <label><span>Recipient email</span><input type="email" value={decisionDraft.to_email} onChange={(event) => setDecisionDraft((current) => current ? { ...current, to_email: event.target.value } : current)} /></label>
                 <label><span>Subject</span><input value={decisionDraft.subject} onChange={(event) => setDecisionDraft((current) => current ? { ...current, subject: event.target.value } : current)} /></label>
                 <label><span>Plain text body</span><textarea rows={12} value={decisionDraft.text_body} onChange={(event) => updateDecisionTextBody(event.target.value)} /></label>
                 <label><span>HTML body</span><textarea rows={12} value={decisionDraft.html_body} onChange={(event) => setDecisionDraft((current) => current ? { ...current, html_body: event.target.value } : current)} /></label>
