@@ -36,6 +36,66 @@ type DecisionDraft = {
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
+function escapeHtml(value: string) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+function plainTextToHtmlBody(value: string) {
+  const blocks = value
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  return blocks
+    .map((block) => {
+      const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+      if (lines.length > 1 && lines.every((line) => /^([-*•]|\d+\.)\s+/.test(line) || line.length < 90)) {
+        return `<ul>${lines.map((line) => `<li>${escapeHtml(line.replace(/^([-*•]|\d+\.)\s+/, ""))}</li>`).join("")}</ul>`;
+      }
+      return `<p>${escapeHtml(block).replaceAll("\n", "<br />")}</p>`;
+    })
+    .join("");
+}
+
+function decisionEmailPreviewHtml(content: string) {
+  if (content.toLowerCase().includes("<html")) return content;
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body { margin:0; padding:0; background:#f4f1ee; color:#171717; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; line-height:1.65; }
+    .email-container { max-width:680px; margin:0 auto; background:#ffffff; border:1px solid #ebe5df; }
+    .email-header { padding:34px 34px 24px; background:#ffffff; border-bottom:4px solid #d72a21; }
+    .email-header span { color:#d72a21; font-size:11px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; }
+    .email-header h1 { margin:8px 0 0; color:#151515; font-size:24px; line-height:1.15; }
+    .email-body { padding:34px; }
+    .email-body h2 { margin:0 0 18px; color:#151515; font-size:22px; }
+    .email-body p { margin:15px 0; color:#282828; }
+    .email-body ul { margin:16px 0; padding-left:22px; color:#282828; }
+    .button { display:inline-block; padding:13px 22px; background:#d72a21; color:#fff !important; text-decoration:none; border-radius:6px; font-weight:800; }
+    .info-box { margin:22px 0; padding:18px 20px; background:#fff7f6; border:1px solid #f1cbc7; border-left:4px solid #d72a21; border-radius:6px; }
+    .footer { padding:26px 34px; background:#fbfaf8; border-top:1px solid #ebe5df; color:#686868; font-size:12px; }
+    .footer p { margin:6px 0; }
+    .footer strong { color:#151515; }
+    .footer a { color:#d72a21; text-decoration:none; font-weight:700; }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="email-header"><span>Pravaron Careers</span><h1>Pravaron Technologies</h1></div>
+    <div class="email-body">${content}</div>
+    <div class="footer">
+      <p><strong>Pravaron Technologies</strong></p>
+      <p>O-621, Block-A, EON Fairfox, Sector-140A, Noida</p>
+      <p><a href="mailto:careers@pravarontechnologies.com">careers@pravarontechnologies.com</a></p>
+      <p>© 2026 Pravaron Technologies Pvt. Ltd. · Noida, India</p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 const STATUSES = ["New", "Assigned for Review", "Under Review", "Shortlisted", "Interview Scheduled", "Offer Sent", "Hired", "Rejected", "Withdrawn"];
 const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
   { value: "all", label: "All sources" },
@@ -188,6 +248,10 @@ export function AdminApplications() {
     } finally {
       setActionId("");
     }
+  }
+
+  function updateDecisionTextBody(value: string) {
+    setDecisionDraft((current) => current ? { ...current, text_body: value, html_body: plainTextToHtmlBody(value) } : current);
   }
 
   async function openDecisionEmail(application: Application, nextStatus: DecisionStatus) {
@@ -371,7 +435,7 @@ export function AdminApplications() {
                       <td>{formatDate(application.created_at)}</td>
                       <td><span className={`source-pill source-pill-${sourceKey(application.source)}`}>{sourceLabel(application.source)}</span></td>
                       <td><button className="icon-button" title="Preview resume" aria-label="Preview resume" onClick={() => openResumePreview(application)} disabled={!canPreviewResume(application)}><Eye size={17} /></button></td>
-                      <td><div className="table-actions"><button className="icon-button" title="Analyze applicant" aria-label="Analyze applicant" onClick={() => analyzeOne(application)} disabled={Boolean(actionId)}><BarChart3 size={17} /></button><button className="icon-button success" title="Approve applicant" aria-label="Approve applicant" onClick={() => openDecisionEmail(application, "Shortlisted")} disabled={isFinal || Boolean(actionId)}><CheckCircle2 size={17} /></button><button className="icon-button danger" title="Reject applicant" aria-label="Reject applicant" onClick={() => openDecisionEmail(application, "Rejected")} disabled={isFinal || Boolean(actionId)}><XCircle size={17} /></button></div></td>
+                      <td><div className="table-actions"><button className="icon-button" title="Analyze applicant" aria-label="Analyze applicant" onClick={() => analyzeOne(application)} disabled={actionId === `${application.id}:analyze`}><BarChart3 size={17} /></button><button className="icon-button success" title="Approve applicant" aria-label="Approve applicant" onClick={() => openDecisionEmail(application, "Shortlisted")} disabled={isFinal || actionId === `${application.id}:Shortlisted`}><CheckCircle2 size={17} /></button><button className="icon-button danger" title="Reject applicant" aria-label="Reject applicant" onClick={() => openDecisionEmail(application, "Rejected")} disabled={isFinal || actionId === `${application.id}:Rejected`}><XCircle size={17} /></button></div></td>
                       <td><Link className="icon-button" href={`/admin/applications/${application.id}`}><ArrowRight size={17} /></Link></td>
                     </tr>
                   );
@@ -465,13 +529,13 @@ export function AdminApplications() {
             <div className="decision-email-grid">
               <div className="batch-email-form">
                 <label><span>Subject</span><input value={decisionDraft.subject} onChange={(event) => setDecisionDraft((current) => current ? { ...current, subject: event.target.value } : current)} /></label>
-                <label><span>Plain text body</span><textarea rows={12} value={decisionDraft.text_body} onChange={(event) => setDecisionDraft((current) => current ? { ...current, text_body: event.target.value } : current)} /></label>
+                <label><span>Plain text body</span><textarea rows={12} value={decisionDraft.text_body} onChange={(event) => updateDecisionTextBody(event.target.value)} /></label>
                 <label><span>HTML body</span><textarea rows={12} value={decisionDraft.html_body} onChange={(event) => setDecisionDraft((current) => current ? { ...current, html_body: event.target.value } : current)} /></label>
               </div>
               <aside className="decision-email-preview">
                 <h3><Mail size={16} /> Preview</h3>
                 <strong>{decisionDraft.subject}</strong>
-                <iframe title="Decision email preview" srcDoc={decisionDraft.html_body} />
+                <iframe title="Decision email preview" srcDoc={decisionEmailPreviewHtml(decisionDraft.html_body)} />
               </aside>
             </div>
             <div className="batch-email-actions">

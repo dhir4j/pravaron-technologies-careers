@@ -41,6 +41,18 @@ function answerEntries(answers?: Record<string, unknown>) {
   return Object.entries(answers ?? {}).filter(([key]) => key !== "email" && key !== "email_import_message_ids");
 }
 
+function formatInterviewQuestion(item: unknown): { label: string; detail?: string } {
+  if (typeof item === "string") return { label: item };
+  if (item && typeof item === "object") {
+    const value = item as { question?: unknown; reason?: unknown; verifies_requirement_id?: unknown };
+    return {
+      label: String(value.question || "Interview question"),
+      detail: [value.verifies_requirement_id ? `Verifies ${value.verifies_requirement_id}` : "", value.reason ? String(value.reason) : ""].filter(Boolean).join(" - "),
+    };
+  }
+  return { label: String(item || "Interview question") };
+}
+
 export function AdminApplicationDetail({ id }: { id: string }) {
   const [application, setApplication] = useState<Application | null>(null);
   const [reviewers, setReviewers] = useState<User[]>([]);
@@ -363,13 +375,15 @@ export function AdminApplicationDetail({ id }: { id: string }) {
               {application.candidate_analysis.job_fit?.score_breakdown ? (
                 <div className="analysis-sections">
                   {Object.entries(application.candidate_analysis.job_fit.score_breakdown).map(([key, item]) => (
-                    <article key={key}>
-                      <strong>{humanize(key)}</strong>
-                      <p>{item.score ?? 0}/{item.max ?? 0}</p>
-                      {item.matched?.length ? <small>Matched: {item.matched.join(", ")}</small> : null}
-                      {item.missing?.length ? <small>Missing: {item.missing.slice(0, 6).join(", ")}</small> : null}
-                      {item.reasons?.length ? <small>{item.reasons.join(", ")}</small> : null}
-                    </article>
+                    typeof item === "object" && item ? (
+                      <article key={key}>
+                        <strong>{humanize(key)}</strong>
+                        <p>{item.score ?? 0}/{item.max ?? 0}</p>
+                        {item.matched?.length ? <small>Matched: {item.matched.join(", ")}</small> : null}
+                        {item.missing?.length ? <small>Missing: {item.missing.slice(0, 6).join(", ")}</small> : null}
+                        {item.reasons?.length ? <small>{item.reasons.join(", ")}</small> : null}
+                      </article>
+                    ) : null
                   ))}
                 </div>
               ) : null}
@@ -399,7 +413,10 @@ export function AdminApplicationDetail({ id }: { id: string }) {
               <div className="analysis-lists">
                 {application.candidate_analysis.strengths?.length ? <div><strong>Strengths</strong><ul>{application.candidate_analysis.strengths.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
                 {application.candidate_analysis.concerns?.length ? <div><strong>Concerns</strong><ul>{application.candidate_analysis.concerns.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
-                {application.candidate_analysis.interview_questions?.length ? <div><strong>Interview questions</strong><ul>{application.candidate_analysis.interview_questions.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}
+                {application.candidate_analysis.interview_questions?.length ? <div><strong>Interview questions</strong><ul>{application.candidate_analysis.interview_questions.map((item, index) => {
+                  const question = formatInterviewQuestion(item);
+                  return <li key={`${question.label}-${index}`}>{question.label}{question.detail ? <small>{question.detail}</small> : null}</li>;
+                })}</ul></div> : null}
               </div>
             </section>
           ) : (

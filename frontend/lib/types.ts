@@ -186,7 +186,7 @@ export interface CandidateAnalysis {
     ai_suggested_suitability_score?: number;
     score_breakdown?: Record<string, { score?: number; max?: number; matched?: string[]; missing?: string[]; reasons?: string[]; priority?: string; detected_location?: string; years_detected?: number; has_project_section?: boolean }>;
   };
-  interview_questions?: string[];
+  interview_questions?: Array<string | { question?: string; reason?: string; verifies_requirement_id?: string | null }>;
   usage?: Record<string, unknown>;
   error?: string;
   analyzed_at?: string;
