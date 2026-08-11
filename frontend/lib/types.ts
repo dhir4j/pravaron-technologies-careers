@@ -194,6 +194,47 @@ export interface CandidateAnalysis {
   updated_at?: string;
 }
 
+export interface AIRejectionRuleSet {
+  id: string;
+  name: string;
+  system_prompt: string;
+  minimum_confidence: number;
+  is_active: boolean;
+  created_by_id?: string;
+  updated_by_id?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AIRejectionReview {
+  id: string;
+  application_id: string;
+  applicant_detail_id?: string;
+  candidate_id: string;
+  job_id: string;
+  ruleset_id?: string;
+  reviewed_by_id?: string;
+  confirmed_by_id?: string;
+  model: string;
+  input_hash: string;
+  status: string;
+  recommendation: "suggest_reject" | "manual_review" | "do_not_reject";
+  confidence_score: number;
+  detected_email?: string;
+  email_source?: string;
+  email_confidence: number;
+  safe_to_confirm: boolean;
+  reasons: string[];
+  evidence: Array<{ field?: string; text?: string }>;
+  missing_data: string[];
+  risk_flags: string[];
+  error?: string;
+  confirmed_at?: string;
+  created_at?: string;
+  updated_at?: string;
+  application?: Application | null;
+}
+
 export interface Application {
   id: string;
   candidate_id: string;

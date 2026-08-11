@@ -3252,6 +3252,8 @@ a.file-summary:hover { color: var(--accent); }
   .interview-job-filter,
   .interview-review-head { align-items: stretch; flex-direction: column; }
   .interview-composition-pills { justify-content: flex-start; }
+  .ai-rejection-metrics,
+  .ai-rules-form { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
   .question-bank-counts { grid-template-columns: 1fr; }
@@ -3472,6 +3474,87 @@ a.file-summary:hover { color: var(--accent); }
   height: auto !important;
   background: #fff;
   box-shadow: 0 16px 40px rgba(15, 15, 15, .18);
+}
+
+/* AI rejection review */
+.ai-rejection-filter-bar {
+  grid-template-columns: minmax(300px, 1fr) 220px 150px 170px auto auto;
+}
+.ai-rejection-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ai-review-section {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.ai-review-results {
+  margin-top: 22px;
+}
+.ai-review-table {
+  min-width: 1180px;
+}
+.ai-email {
+  max-width: 220px;
+  overflow-wrap: anywhere;
+}
+.ai-review-chip {
+  display: inline-flex;
+  max-width: 260px;
+  margin: 2px 4px 2px 0;
+  padding: 5px 7px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.ai-review-warning {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 280px;
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+.ai-review-warning svg {
+  flex: 0 0 auto;
+}
+.ai-rules-dialog {
+  width: min(900px, 100%);
+  max-height: min(860px, calc(100dvh - 48px));
+  overflow: auto;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.ai-rules-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px;
+  gap: 14px;
+  padding: 20px;
+}
+.ai-rules-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.ai-rules-form label:last-child {
+  grid-column: 1 / -1;
+}
+.ai-rules-form textarea {
+  min-height: 360px;
 }
 .groups-workspace {
   display: grid;

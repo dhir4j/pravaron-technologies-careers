@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Bell,
+  Bot,
   BriefcaseBusiness,
   CalendarDays,
   ClipboardList,
@@ -33,6 +34,7 @@ const candidateItems = [
 const adminItems = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/applications", label: "Applications", icon: FileText },
+  { href: "/admin/ai-rejection", label: "AI Rejection", icon: Bot },
   { href: "/admin/application-groups", label: "Groups", icon: UsersRound },
   { href: "/admin/jobs", label: "Jobs", icon: BriefcaseBusiness },
   { href: "/admin/assessments", label: "Assessments", icon: ClipboardList },
