@@ -57,13 +57,14 @@ type ProcessProgress = {
   logs: ProcessLog[];
 };
 
-const STATUSES = ["New", "Assigned for Review", "Under Review", "Shortlisted", "Interview Scheduled", "Offer Sent", "Hired", "Rejected", "Withdrawn"];
 const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
   { value: "all", label: "All sources" },
   { value: "email", label: "Email" },
   { value: "careers_website", label: "Portal" },
   { value: "linkedin", label: "LinkedIn" },
 ];
+const AI_REJECTION_STATUS = "New";
+const AI_REJECTION_PER_PAGE = 20;
 
 function sourceLabel(source?: string | null) {
   if (source === "email") return "Email";
@@ -109,7 +110,6 @@ export function AdminAIRejection() {
   const [reviews, setReviews] = useState<AIRejectionReview[]>([]);
   const [selectedReviewIds, setSelectedReviewIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
   const [jobId, setJobId] = useState("");
   const [source, setSource] = useState<SourceFilter>("all");
   const [page, setPage] = useState(1);
@@ -134,32 +134,33 @@ export function AdminAIRejection() {
     logs: [],
   });
 
-  const currentQuery = useCallback((nextSearch = search, nextStatus = status, nextJobId = jobId, nextSource = source, nextPage = page) => {
+  const currentQuery = useCallback((nextSearch = search, nextJobId = jobId, nextSource = source, nextPage = page) => {
     const params = new URLSearchParams();
     if (nextSearch.trim()) params.set("search", nextSearch.trim());
-    if (nextStatus) params.set("status", nextStatus);
+    params.set("status", AI_REJECTION_STATUS);
     if (nextJobId) params.set("job_id", nextJobId);
     if (nextSource !== "all") params.set("source", nextSource);
     params.set("page", String(nextPage));
-    params.set("per_page", "20");
+    params.set("per_page", String(AI_REJECTION_PER_PAGE));
     return `?${params}`;
-  }, [jobId, page, search, source, status]);
+  }, [jobId, page, search, source]);
 
   const selectableReviewIds = useMemo(() => reviews.filter(isSelectableReview).map((review) => review.id), [reviews]);
   const selectedReviewCount = selectedReviewIds.length;
   const allSelectableChecked = selectableReviewIds.length > 0 && selectableReviewIds.every((id) => selectedReviewIds.includes(id));
-  const reviewableItems = useMemo(() => items.filter((item) => (item.internal_status || item.candidate_status) !== "Rejected"), [items]);
-  const hiddenRejectedCount = items.length - reviewableItems.length;
+  const reviewableItems = useMemo(() => items.filter((item) => (item.internal_status || item.candidate_status) === AI_REJECTION_STATUS), [items]);
 
-  const loadApplications = useCallback((query = "") => {
-    setLoading(true);
+  const loadApplications = useCallback((query = "", showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     api<{ applications: Application[]; pagination?: Pagination }>(`/admin/applications${query}`)
       .then((response) => {
         setItems(response.applications);
         setPagination(response.pagination ?? { page: 1, per_page: 20, total: response.applications.length, pages: 1 });
       })
       .catch((requestError: Error) => setError(requestError.message))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (showSpinner) setLoading(false);
+      });
   }, []);
 
   const loadRules = useCallback(() => {
@@ -181,17 +182,28 @@ export function AdminAIRejection() {
   useEffect(() => {
     const timer = window.setTimeout(() => loadApplications(currentQuery()), 250);
     return () => window.clearTimeout(timer);
-  }, [search, status, jobId, source, page, loadApplications, currentQuery]);
+  }, [search, jobId, source, page, loadApplications, currentQuery]);
+
+  useEffect(() => {
+    if (processing || confirming || settingsOpen) return;
+    const syncQueue = () => loadApplications(currentQuery(), false);
+    window.addEventListener("focus", syncQueue);
+    const timer = window.setInterval(syncQueue, 30000);
+    return () => {
+      window.removeEventListener("focus", syncQueue);
+      window.clearInterval(timer);
+    };
+  }, [confirming, currentQuery, loadApplications, processing, settingsOpen]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, status, jobId, source]);
+  }, [search, jobId, source]);
 
   useEffect(() => {
     setReviews([]);
     setSelectedReviewIds([]);
     setSummary(null);
-  }, [search, status, jobId, source, page]);
+  }, [search, jobId, source, page]);
 
   async function saveRules() {
     setSavingSettings(true);
@@ -336,6 +348,7 @@ export function AdminAIRejection() {
       setSelectedReviewIds([]);
       setSuccess(`Rejected ${confirmation.rejected}. Skipped ${confirmation.skipped + uncheckedSafeReviews.length}. Failed ${confirmation.failed}.`);
       if (confirmation.errors?.length) setError(confirmation.errors.slice(0, 2).map((item) => item.error).join(" | "));
+      setItems((current) => current.filter((application) => !confirmation.applications.some((updated) => updated.id === application.id && updated.internal_status === "Rejected")));
       loadApplications(currentQuery());
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Confirmation failed");
@@ -384,16 +397,13 @@ export function AdminAIRejection() {
         <select value={source} onChange={(event) => setSource(event.target.value as SourceFilter)} aria-label="Filter by source">
           {SOURCE_FILTERS.map((item) => <option value={item.value} key={item.value}>{item.label}</option>)}
         </select>
-        <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Filter by status">
-          <option value="">All statuses</option>
-          {STATUSES.map((value) => <option key={value}>{value}</option>)}
-        </select>
+        <span className="ai-fixed-status"><CheckCircle2 size={16} />New only</span>
         <button className="button button-secondary" onClick={() => loadApplications(currentQuery())} disabled={loading}><RefreshCw size={17} />Refresh</button>
         <button className="button button-primary" onClick={processCurrentPage} disabled={processing || loading || !reviewableItems.length}><Sparkles size={17} />{processing ? "Processing" : "Process page"}</button>
       </div>
 
       <div className="metric-grid ai-rejection-metrics">
-        <Metric label="Applications on page" value={reviewableItems.length} detail={hiddenRejectedCount ? `${hiddenRejectedCount} rejected hidden` : `${pagination.total} total`} />
+        <Metric label="New applications on page" value={reviewableItems.length} detail={`${pagination.total} total new`} />
         <Metric label="Suggested reject" value={summary?.suggested_reject ?? 0} detail={`${summary?.safe_to_confirm ?? 0} confirmable`} />
         <Metric label="Manual review" value={summary?.manual_review ?? 0} detail={`${summary?.failed ?? 0} failed`} />
       </div>
@@ -402,7 +412,7 @@ export function AdminAIRejection() {
         <section className="ai-review-section">
           <div className="panel-heading">
             <div><Bot size={18} /><h2>Current Page</h2></div>
-            <span className="muted-copy">Page {pagination.page} of {pagination.pages || 1}{hiddenRejectedCount ? ` · ${hiddenRejectedCount} rejected hidden` : ""}</span>
+            <span className="muted-copy">Page {pagination.page} of {pagination.pages || 1} · {AI_REJECTION_PER_PAGE} per page · New only</span>
           </div>
           {reviewableItems.length ? (
             <>
@@ -431,7 +441,7 @@ export function AdminAIRejection() {
                 </div>
               ) : null}
             </>
-          ) : <EmptyState title="No actionable applications found" body={hiddenRejectedCount ? "Rejected applications on this page are hidden." : "Adjust filters to load a page."} />}
+          ) : <EmptyState title="No new applications found" body="Shortlisted and rejected applications are hidden from this AI rejection queue." />}
         </section>
       )}
 
