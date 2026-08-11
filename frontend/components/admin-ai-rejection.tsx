@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  LoaderCircle,
   RefreshCw,
   Search,
   Settings,
@@ -41,6 +42,20 @@ type ConfirmationSummary = {
   confirmed_review_ids: string[];
   skipped_review_ids: string[];
 };
+type ProcessLog = {
+  id: string;
+  status: "running" | "success" | "error" | "info";
+  title: string;
+  detail?: string;
+};
+type ProcessProgress = {
+  visible: boolean;
+  total: number;
+  completed: number;
+  currentName: string;
+  currentStep: string;
+  logs: ProcessLog[];
+};
 
 const STATUSES = ["New", "Assigned for Review", "Under Review", "Shortlisted", "Interview Scheduled", "Offer Sent", "Hired", "Rejected", "Withdrawn"];
 const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
@@ -74,6 +89,19 @@ function isSelectableReview(review: AIRejectionReview) {
   return review.status === "suggested" && review.recommendation === "suggest_reject" && review.safe_to_confirm && Boolean(review.detected_email);
 }
 
+function buildReviewSummary(reviews: AIRejectionReview[], checked: number, errors: ReviewSummary["errors"] = []): ReviewSummary {
+  return {
+    checked,
+    suggested_reject: reviews.filter((review) => review.recommendation === "suggest_reject").length,
+    safe_to_confirm: reviews.filter((review) => review.safe_to_confirm).length,
+    manual_review: reviews.filter((review) => review.recommendation === "manual_review").length,
+    do_not_reject: reviews.filter((review) => review.recommendation === "do_not_reject").length,
+    failed: reviews.filter((review) => review.status === "failed").length + errors.length,
+    errors,
+    review_ids: reviews.map((review) => review.id),
+  };
+}
+
 export function AdminAIRejection() {
   const [items, setItems] = useState<Application[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -97,6 +125,14 @@ export function AdminAIRejection() {
   const [minimumConfidence, setMinimumConfidence] = useState(70);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [processProgress, setProcessProgress] = useState<ProcessProgress>({
+    visible: false,
+    total: 0,
+    completed: 0,
+    currentName: "",
+    currentStep: "",
+    logs: [],
+  });
 
   const currentQuery = useCallback((nextSearch = search, nextStatus = status, nextJobId = jobId, nextSource = source, nextPage = page) => {
     const params = new URLSearchParams();
@@ -112,6 +148,8 @@ export function AdminAIRejection() {
   const selectableReviewIds = useMemo(() => reviews.filter(isSelectableReview).map((review) => review.id), [reviews]);
   const selectedReviewCount = selectedReviewIds.length;
   const allSelectableChecked = selectableReviewIds.length > 0 && selectableReviewIds.every((id) => selectedReviewIds.includes(id));
+  const reviewableItems = useMemo(() => items.filter((item) => (item.internal_status || item.candidate_status) !== "Rejected"), [items]);
+  const hiddenRejectedCount = items.length - reviewableItems.length;
 
   const loadApplications = useCallback((query = "") => {
     setLoading(true);
@@ -179,27 +217,87 @@ export function AdminAIRejection() {
   }
 
   async function processCurrentPage() {
-    if (!items.length) return;
+    if (!reviewableItems.length) return;
     setProcessing(true);
     setError("");
     setSuccess("");
     setReviews([]);
     setSelectedReviewIds([]);
+    setSummary(buildReviewSummary([], 0));
+    setProcessProgress({
+      visible: true,
+      total: reviewableItems.length,
+      completed: 0,
+      currentName: "Preparing current page",
+      currentStep: "Starting resume extraction and DeepSeek review.",
+      logs: [{ id: "start", status: "info", title: "Queued current page", detail: `${reviewableItems.length} applications ready for processing.` }],
+    });
+    const nextReviews: AIRejectionReview[] = [];
+    const nextErrors: ReviewSummary["errors"] = [];
     try {
-      const response = await api<{ review: ReviewSummary; ruleset: AIRejectionRuleSet; reviews: AIRejectionReview[] }>("/admin/applications/rejection-review", {
-        method: "POST",
-        body: { application_ids: items.map((item) => item.id) },
-      });
-      setRuleset(response.ruleset);
-      setSummary(response.review);
-      setReviews(response.reviews);
-      setSelectedReviewIds(response.reviews.filter(isSelectableReview).map((review) => review.id));
-      if (response.review.errors?.length) {
-        setError(response.review.errors.slice(0, 2).map((item) => item.error).join(" | "));
+      for (let index = 0; index < reviewableItems.length; index += 1) {
+        const application = reviewableItems[index];
+        const candidateName = application.candidate?.full_name || "Candidate";
+        setProcessProgress((current) => ({
+          ...current,
+          currentName: candidateName,
+          currentStep: `Extracting resume text and asking DeepSeek (${index + 1}/${reviewableItems.length}).`,
+          logs: [
+            { id: `${application.id}:running`, status: "running", title: candidateName, detail: "Extracting PDF/resume data and generating suggestion." },
+            ...current.logs.filter((item) => item.id !== `${application.id}:running`).slice(0, 8),
+          ],
+        }));
+        try {
+          const response = await api<{ review: ReviewSummary; ruleset: AIRejectionRuleSet; reviews: AIRejectionReview[] }>("/admin/applications/rejection-review", {
+            method: "POST",
+            body: { application_ids: [application.id] },
+          });
+          setRuleset(response.ruleset);
+          nextReviews.push(...response.reviews);
+          nextErrors.push(...(response.review.errors || []));
+          const latestReview = response.reviews[0];
+          const statusText = latestReview
+            ? `${recommendationLabel(latestReview.recommendation)} · ${latestReview.confidence_score}% confidence`
+            : "No suggestion returned";
+          setReviews([...nextReviews]);
+          setSelectedReviewIds(nextReviews.filter(isSelectableReview).map((review) => review.id));
+          setSummary(buildReviewSummary(nextReviews, index + 1, nextErrors));
+          setProcessProgress((current) => ({
+            ...current,
+            completed: index + 1,
+            currentStep: `Completed ${index + 1} of ${reviewableItems.length}.`,
+            logs: [
+              { id: `${application.id}:done`, status: latestReview?.safe_to_confirm ? "success" : "info", title: candidateName, detail: statusText },
+              ...current.logs.filter((item) => item.id !== `${application.id}:running`).slice(0, 8),
+            ],
+          }));
+        } catch (requestError) {
+          const message = requestError instanceof Error ? requestError.message : "AI rejection review failed";
+          nextErrors.push({ application_id: application.id, error: message });
+          setSummary(buildReviewSummary(nextReviews, index + 1, nextErrors));
+          setProcessProgress((current) => ({
+            ...current,
+            completed: index + 1,
+            currentStep: `Completed ${index + 1} of ${reviewableItems.length}.`,
+            logs: [
+              { id: `${application.id}:error`, status: "error", title: candidateName, detail: message },
+              ...current.logs.filter((item) => item.id !== `${application.id}:running`).slice(0, 8),
+            ],
+          }));
+        }
       }
-      setSuccess(`Processed ${response.review.checked} applications. ${response.review.safe_to_confirm} suggested rejection${response.review.safe_to_confirm === 1 ? "" : "s"} ready.`);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "AI rejection review failed");
+      const finalSummary = buildReviewSummary(nextReviews, reviewableItems.length, nextErrors);
+      setSummary(finalSummary);
+      if (finalSummary.errors.length) {
+        setError(finalSummary.errors.slice(0, 2).map((item) => item.error).join(" | "));
+      }
+      setSuccess(`Processed ${finalSummary.checked} applications. ${finalSummary.safe_to_confirm} suggested rejection${finalSummary.safe_to_confirm === 1 ? "" : "s"} ready.`);
+      setProcessProgress((current) => ({
+        ...current,
+        completed: reviewableItems.length,
+        currentName: "Processing complete",
+        currentStep: `${finalSummary.safe_to_confirm} confirmable suggestions, ${finalSummary.manual_review} manual review, ${finalSummary.failed} failed.`,
+      }));
     } finally {
       setProcessing(false);
     }
@@ -234,7 +332,7 @@ export function AdminAIRejection() {
           return { ...review, status: "skipped", safe_to_confirm: false };
         }
         return review;
-      }));
+      }).filter((review) => review.status !== "confirmed"));
       setSelectedReviewIds([]);
       setSuccess(`Rejected ${confirmation.rejected}. Skipped ${confirmation.skipped + uncheckedSafeReviews.length}. Failed ${confirmation.failed}.`);
       if (confirmation.errors?.length) setError(confirmation.errors.slice(0, 2).map((item) => item.error).join(" | "));
@@ -291,11 +389,11 @@ export function AdminAIRejection() {
           {STATUSES.map((value) => <option key={value}>{value}</option>)}
         </select>
         <button className="button button-secondary" onClick={() => loadApplications(currentQuery())} disabled={loading}><RefreshCw size={17} />Refresh</button>
-        <button className="button button-primary" onClick={processCurrentPage} disabled={processing || loading || !items.length}><Sparkles size={17} />{processing ? "Processing" : "Process page"}</button>
+        <button className="button button-primary" onClick={processCurrentPage} disabled={processing || loading || !reviewableItems.length}><Sparkles size={17} />{processing ? "Processing" : "Process page"}</button>
       </div>
 
       <div className="metric-grid ai-rejection-metrics">
-        <Metric label="Applications on page" value={items.length} detail={`${pagination.total} total`} />
+        <Metric label="Applications on page" value={reviewableItems.length} detail={hiddenRejectedCount ? `${hiddenRejectedCount} rejected hidden` : `${pagination.total} total`} />
         <Metric label="Suggested reject" value={summary?.suggested_reject ?? 0} detail={`${summary?.safe_to_confirm ?? 0} confirmable`} />
         <Metric label="Manual review" value={summary?.manual_review ?? 0} detail={`${summary?.failed ?? 0} failed`} />
       </div>
@@ -304,15 +402,15 @@ export function AdminAIRejection() {
         <section className="ai-review-section">
           <div className="panel-heading">
             <div><Bot size={18} /><h2>Current Page</h2></div>
-            <span className="muted-copy">Page {pagination.page} of {pagination.pages || 1}</span>
+            <span className="muted-copy">Page {pagination.page} of {pagination.pages || 1}{hiddenRejectedCount ? ` · ${hiddenRejectedCount} rejected hidden` : ""}</span>
           </div>
-          {items.length ? (
+          {reviewableItems.length ? (
             <>
               <div className="admin-table-wrap">
                 <table className="admin-table">
                   <thead><tr><th>Candidate</th><th>Role</th><th>Status</th><th>Email</th><th>Applied</th><th><span className="sr-only">Open</span></th></tr></thead>
                   <tbody>
-                    {items.map((application) => (
+                    {reviewableItems.map((application) => (
                       <tr key={application.id}>
                         <td><strong>{application.candidate?.full_name || "Candidate"}</strong><small>{sourceLabel(application.source)}</small></td>
                         <td><strong>{application.job?.title}</strong><small>{application.job?.public_code}</small></td>
@@ -333,7 +431,7 @@ export function AdminAIRejection() {
                 </div>
               ) : null}
             </>
-          ) : <EmptyState title="No applications found" body="Adjust filters to load a page." />}
+          ) : <EmptyState title="No actionable applications found" body={hiddenRejectedCount ? "Rejected applications on this page are hidden." : "Adjust filters to load a page."} />}
         </section>
       )}
 
@@ -423,6 +521,33 @@ export function AdminAIRejection() {
             </div>
           </section>
         </div>
+      ) : null}
+
+      {processProgress.visible ? (
+        <aside className="ai-process-window" role="status" aria-live="polite">
+          <div className="ai-process-head">
+            <div>
+              <strong>{processing ? "Processing page" : "Process status"}</strong>
+              <span>{processProgress.currentName}</span>
+            </div>
+            <button className="icon-button" onClick={() => setProcessProgress((current) => ({ ...current, visible: false }))} aria-label="Close process status"><X size={15} /></button>
+          </div>
+          <div className="ai-process-meter">
+            <span style={{ width: `${processProgress.total ? Math.round((processProgress.completed / processProgress.total) * 100) : 0}%` }} />
+          </div>
+          <div className="ai-process-copy">
+            <strong>{processProgress.completed}/{processProgress.total}</strong>
+            <span>{processProgress.currentStep}</span>
+          </div>
+          <div className="ai-process-log">
+            {processProgress.logs.map((item) => (
+              <div className={`ai-process-log-row ai-process-log-${item.status}`} key={item.id}>
+                {item.status === "running" ? <LoaderCircle className="spin" size={14} /> : item.status === "error" ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
+                <span><strong>{item.title}</strong>{item.detail ? <small>{item.detail}</small> : null}</span>
+              </div>
+            ))}
+          </div>
+        </aside>
       ) : null}
     </>
   );
