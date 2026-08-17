@@ -14,15 +14,17 @@ Run the backend at `http://localhost:5000` and open `http://localhost:3000`.
 Keep both local services on the same hostname so the HTTP-only authentication
 cookie remains first-party.
 
-The frontend uses HTTP-only cookie authentication through the Flask API. Configure
-`NEXT_PUBLIC_API_BASE_URL` for staging and production.
+The frontend uses HTTP-only cookie authentication through the Flask API.
+Keep browser requests same-origin unless the target API explicitly allows
+cross-origin credentialed requests.
 
 Production backend:
 
 ```text
 NEXT_PUBLIC_API_BASE_URL=
+API_PROXY_ORIGIN=http://server2careers.pravarontechnologies.com
 ```
 
 Leave `NEXT_PUBLIC_API_BASE_URL` unset in production so browser requests use the
-same-origin `/api/v1` path. Next.js rewrites those requests to the PythonAnywhere
-backend from the server side.
+same-origin `/api/v1` path. The Next.js route handler at `/api/v1/*` proxies
+those requests to `API_PROXY_ORIGIN` from the server side.
